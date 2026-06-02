@@ -1,0 +1,257 @@
+{% extends "diagnostics/base.html" %}
+{% load static %}
+
+{% block title %}Command Center — PC Checker Extreme{% endblock %}
+
+{% block hud_actions %}
+<button type="submit" form="scan-form" class="btn-hud btn-hud-magenta" id="initiate-scan-btn" title="Start full system scan">
+  INITIATE SCAN
+</button>
+{% endblock %}
+
+{% block content %}
+{% if is_cloud_host %}
+<section class="banner-complete banner-cloud">
+  <span>
+    <strong>Cloud host (Render/Linux):</strong> UI and scan history work here.
+    For full WMI/winget hardware scans, run the app on your Windows PC locally.
+  </span>
+</section>
+{% endif %}
+{% if last_complete_scan %}
+<section class="banner-complete">
+  <span>Last scan <strong>{{ last_complete_scan.hostname }}</strong> — score {{ last_complete_scan.overall_score }}/100</span>
+  <a href="{% url 'diagnostics:report_detail' report_id=last_complete_scan.id %}" class="btn-hud btn-hud-magenta">VIEW FULL REPORT →</a>
+</section>
+{% endif %}
+
+<div class="dashboard-grid">
+
+  <!-- LEFT COLUMN -->
+  <aside class="dash-col dash-left">
+    <section class="panel panel-glow-cyan">
+      <header class="panel-head">
+        <span class="panel-tag">SYS//CORE</span>
+        <h2>Health matrix</h2>
+      </header>
+      <div class="chart-wrap chart-radar">
+        <canvas id="chart-health-ring" height="220"></canvas>
+        <div class="ring-center">
+          <span class="ring-value" id="ring-score">{% if last_scan and last_scan.overall_score %}{{ last_scan.overall_score }}{% else %}—{% endif %}</span>
+          <span class="ring-label">INDEX</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <header class="panel-head">
+        <span class="panel-tag">LIVE//TELEMETRY</span>
+        <h2>Resource load</h2>
+      </header>
+      <ul class="telemetry-bars">
+        <li>
+          <div class="tel-row">
+            <span>CPU</span>
+            <span class="tel-val cyan">{{ telemetry.cpu }}%</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill cyan" style="width: {{ telemetry.cpu }}%"></div></div>
+        </li>
+        <li>
+          <div class="tel-row">
+            <span>RAM</span>
+            <span class="tel-val magenta">{{ telemetry.ram }}%</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill magenta" style="width: {{ telemetry.ram }}%"></div></div>
+        </li>
+        {% for d in telemetry.disks %}
+        <li>
+          <div class="tel-row">
+            <span>DISK {{ d.label }}</span>
+            <span class="tel-val violet">{{ d.percent }}%</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill violet" style="width: {{ d.percent }}%"></div></div>
+        </li>
+        {% empty %}
+        <li>
+          <div class="tel-row">
+            <span>DISK</span>
+            <span class="tel-val violet">{{ telemetry.disk }}%</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill violet" style="width: {{ telemetry.disk }}%"></div></div>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="panel panel-span">
+      <header class="panel-head">
+        <span class="panel-tag">HIST//TREND</span>
+        <h2>Scan history</h2>
+      </header>
+      <div class="chart-wrap chart-area">
+        <canvas id="chart-history" height="120"></canvas>
+      </div>
+    </section>
+  </aside>
+
+  <!-- CENTER COLUMN -->
+  <section class="dash-col dash-center">
+    <div class="stat-row">
+      <div class="stat-box">
+        <span class="stat-num cyan">{{ telemetry.cpu }}<small>%</small></span>
+        <span class="stat-lbl">CPU LOAD</span>
+      </div>
+      <div class="stat-box highlight-magenta">
+        <span class="stat-num">{{ telemetry.ram_total_gb }}<small>GB</small></span>
+        <span class="stat-lbl">RAM TOTAL</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-num violet">{{ telemetry.disk_free_gb }}<small>GB</small></span>
+        <span class="stat-lbl">FREE ({{ telemetry.disk_count }} DRIVE{{ telemetry.disk_count|pluralize }})</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-num">{{ recent_scans|length }}</span>
+        <span class="stat-lbl">ARCHIVED SCANS</span>
+      </div>
+    </div>
+
+    <section class="panel panel-wave">
+      <header class="panel-head">
+        <span class="panel-tag">SIG//ANALYSIS</span>
+        <h2>Subsystem waveform</h2>
+      </header>
+      <div class="chart-wrap">
+        <canvas id="chart-waveform" height="100"></canvas>
+      </div>
+    </section>
+
+    <section class="panel" id="scan-panel">
+      <header class="panel-head">
+        <span class="panel-tag">OPS//SCAN</span>
+        <h2>Full system diagnostic</h2>
+      </header>
+      <p class="panel-desc">
+        Deep WMI hardware ID by manufacturer · winget update sweep · Windows Update status · AI review
+      </p>
+      <form id="scan-form" class="scan-form" action="{% url 'diagnostics:start_scan' %}" method="post">
+        {% csrf_token %}
+        <label class="toggle-ai">
+          <input type="checkbox" name="include_ai" checked>
+          <span class="toggle-track"></span>
+          <span>Neural analysis (OpenAI){% if not has_openai %} — add <code>OPENAI_API_KEY</code>{% endif %}</span>
+        </label>
+        <label class="toggle-ai">
+          <input type="checkbox" name="include_slow_checks">
+          <span class="toggle-track"></span>
+          <span>Check app &amp; Windows updates (winget — adds 1–2 min, can hang on slow networks)</span>
+        </label>
+        <button type="submit" class="btn-hud btn-hud-magenta btn-hud-lg" id="scan-btn">
+          <span class="btn-label">▶ EXECUTE SCAN</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+        <p class="scan-status" id="scan-status" aria-live="polite"></p>
+        <p class="panel-hint">Quick scan ~30–60 sec (hardware + health). Leave updates unchecked unless needed.</p>
+      </form>
+    </section>
+
+    <section class="panel">
+      <header class="panel-head">
+        <span class="panel-tag">MOD//MATRIX</span>
+        <h2>Diagnostic modules</h2>
+      </header>
+      <div class="chart-wrap chart-bars">
+        <canvas id="chart-modules" height="140"></canvas>
+      </div>
+    </section>
+  </section>
+
+  <!-- RIGHT COLUMN -->
+  <aside class="dash-col dash-right">
+    <section class="panel panel-map">
+      <header class="panel-head">
+        <span class="panel-tag">NET//TOPOLOGY</span>
+        <h2>System map</h2>
+      </header>
+      <div class="topology-viz" aria-hidden="true">
+        <svg viewBox="0 0 200 120" class="topo-svg">
+          <defs>
+            <linearGradient id="glowCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#00f0ff;stop-opacity:0.9"/>
+              <stop offset="100%" style="stop-color:#00f0ff;stop-opacity:0.2"/>
+            </linearGradient>
+            <linearGradient id="glowPink" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#ff2d9a;stop-opacity:0.8"/>
+              <stop offset="100%" style="stop-color:#ff2d9a;stop-opacity:0.1"/>
+            </linearGradient>
+          </defs>
+          <circle cx="100" cy="55" r="35" fill="none" stroke="url(#glowCyan)" stroke-width="1" opacity="0.5"/>
+          <circle cx="100" cy="55" r="22" fill="none" stroke="#ff2d9a" stroke-width="1" opacity="0.7"/>
+          <circle cx="100" cy="55" r="6" fill="#ff2d9a" class="pulse-node"/>
+          <line x1="100" y1="55" x2="40" y2="25" stroke="#00f0ff" stroke-width="0.5" opacity="0.6"/>
+          <line x1="100" y1="55" x2="165" y2="30" stroke="#00f0ff" stroke-width="0.5" opacity="0.6"/>
+          <line x1="100" y1="55" x2="50" y2="95" stroke="#b24dff" stroke-width="0.5" opacity="0.6"/>
+          <line x1="100" y1="55" x2="155" y2="90" stroke="#b24dff" stroke-width="0.5" opacity="0.6"/>
+          <circle cx="40" cy="25" r="4" fill="#00f0ff"/>
+          <circle cx="165" cy="30" r="4" fill="#00f0ff"/>
+          <circle cx="50" cy="95" r="4" fill="#b24dff"/>
+          <circle cx="155" cy="90" r="4" fill="#b24dff"/>
+        </svg>
+      </div>
+      <ul class="node-list">
+        <li><span class="node-dot cyan"></span> CPU / WMI</li>
+        <li><span class="node-dot magenta"></span> GPU / Storage</li>
+        <li><span class="node-dot violet"></span> Network / BIOS</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <header class="panel-head">
+        <span class="panel-tag">LOG//ARCHIVE</span>
+        <h2>Recent scans</h2>
+      </header>
+      {% if recent_scans %}
+      <ul class="scan-log">
+        {% for scan in recent_scans %}
+        <li>
+          <a href="{% url 'diagnostics:report_detail' report_id=scan.id %}" class="scan-log-item">
+            <div>
+              <strong>{{ scan.hostname|default:"This PC" }}</strong>
+              {% if scan.status == "complete" and scan.overall_score %}<span class="scan-hint"> — tap for drives, GPU, BIOS</span>{% endif %}
+              <span class="scan-time">{{ scan.created_at|date:"M j · H:i" }}</span>
+            </div>
+            <div class="scan-log-meta">
+              <span class="badge badge-{{ scan.status }}">{{ scan.get_status_display }}</span>
+              {% if scan.overall_score is not None %}
+              <span class="score-chip">{{ scan.overall_score }}</span>
+              {% endif %}
+            </div>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty-log">No scans yet. Execute full scan to populate archive.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel feature-stack">
+      <div class="mini-feature"><span class="mf-icon">◈</span> Hardware by manufacturer</div>
+      <div class="mini-feature"><span class="mf-icon">◈</span> Outdated app detection</div>
+      <div class="mini-feature"><span class="mf-icon">◈</span> AI priority actions</div>
+    </section>
+  </aside>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  window.PCC_DASHBOARD = {
+    cpu: {{ telemetry.cpu }},
+    ram: {{ telemetry.ram }},
+    disk: {{ telemetry.disk }},
+    history: {{ chart_history_json|safe }},
+    ringScore: {% if last_scan and last_scan.overall_score %}{{ last_scan.overall_score }}{% else %}null{% endif %}
+  };
+</script>
+<script src="{% static 'diagnostics/js/dashboard.js' %}"></script>
+{% endblock %}

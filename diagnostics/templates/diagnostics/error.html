@@ -1,0 +1,15 @@
+{% extends "diagnostics/base.html" %}
+
+{% block title %}Scan failed{% endblock %}
+{% block body_class %}page-report{% endblock %}
+
+{% block content %}
+<section class="card error-card">
+  <header class="panel-head" style="justify-content:center">
+    <span class="panel-tag" style="color:var(--magenta)">ERR//SCAN</span>
+    <h2>Diagnostic sequence failed</h2>
+  </header>
+  <p>{{ message }}</p>
+  <a href="{% url 'diagnostics:home' %}" class="btn-hud btn-hud-magenta">RETURN TO COMMAND CENTER</a>
+</section>
+{% endblock %}

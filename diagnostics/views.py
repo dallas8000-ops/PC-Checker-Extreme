@@ -1,0 +1,260 @@
+import json
+import os
+import socket
+import sys
+
+from django.conf import settings
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
+from django.views.decorators.http import require_GET, require_http_methods
+
+from .models import ScanReport
+from .report_context import build_report_context
+from .services.scan_runner import start_background_scan
+
+
+def _api_key_ok(request) -> bool:
+    expected = getattr(settings, "PCC_API_KEY", "") or ""
+    if not expected:
+        return True
+    return request.headers.get("X-API-Key") == expected or request.GET.get("api_key") == expected
+
+
+def _live_telemetry():
+    try:
+        import psutil
+
+        mem = psutil.virtual_memory()
+        disks = []
+        total_free = 0.0
+        for part in psutil.disk_partitions(all=True):
+            if part.fstype and "cdrom" in (part.opts or "").lower():
+                continue
+            mount = part.mountpoint.rstrip("\\")
+            letter = mount if len(mount) <= 3 else mount
+            try:
+                usage = psutil.disk_usage(part.mountpoint)
+                free_gb = round(usage.free / (1024**3), 1)
+                total_free += free_gb
+                disks.append(
+                    {
+                        "label": letter.upper() if ":" in letter else letter,
+                        "percent": round(usage.percent, 1),
+                        "free_gb": free_gb,
+                    }
+                )
+            except (PermissionError, OSError):
+                continue
+        primary = disks[0]["percent"] if disks else 0
+        return {
+            "cpu": round(psutil.cpu_percent(interval=0.3), 1),
+            "ram": round(mem.percent, 1),
+            "ram_total_gb": round(mem.total / (1024**3), 1),
+            "disk": primary,
+            "disk_free_gb": round(total_free, 1),
+            "disk_count": len(disks),
+            "disks": disks,
+        }
+    except Exception:
+        return {
+            "cpu": 0,
+            "ram": 0,
+            "ram_total_gb": 0,
+            "disk": 0,
+            "disk_free_gb": 0,
+            "disk_count": 0,
+            "disks": [],
+        }
+
+
+def home(request):
+    is_cloud_host = os.environ.get("RENDER") == "true" or sys.platform != "win32"
+    recent = list(ScanReport.objects.all()[:8])
+    history_scores = [
+        s.overall_score for s in reversed(recent) if s.overall_score is not None
+    ]
+    last = recent[0] if recent else None
+    last_complete = next(
+        (s for s in recent if s.status == ScanReport.Status.COMPLETE),
+        None,
+    )
+    return render(
+        request,
+        "diagnostics/home.html",
+        {
+            "recent_scans": recent,
+            "has_openai": bool(settings.OPENAI_API_KEY),
+            "telemetry": _live_telemetry(),
+            "last_scan": last,
+            "last_complete_scan": last_complete,
+            "chart_history_json": json.dumps(history_scores or [72, 78, 81, 85]),
+            "is_cloud_host": is_cloud_host,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def start_scan(request):
+    if request.method == "GET":
+        return redirect("diagnostics:home")
+
+    include_ai = request.POST.get("include_ai", "on") == "on"
+    include_slow_checks = request.POST.get("include_slow_checks") == "on"
+    report = ScanReport.objects.create(
+        status=ScanReport.Status.SCANNING,
+        hostname=socket.gethostname(),
+        scan_progress=0,
+        scan_stage="Queued…",
+    )
+    start_background_scan(report.id, include_ai, include_slow_checks)
+    return redirect("diagnostics:scan_progress", report_id=report.id)
+
+
+def scan_progress(request, report_id):
+    report = get_object_or_404(ScanReport, pk=report_id)
+    return render(request, "diagnostics/scan_progress.html", {"report": report})
+
+
+@require_GET
+def scan_status(request, report_id):
+    if not _api_key_ok(request):
+        return JsonResponse({"error": "Invalid API key"}, status=403)
+    report = get_object_or_404(ScanReport, pk=report_id)
+    data = {
+        "id": str(report.id),
+        "status": report.status,
+        "progress": report.scan_progress,
+        "stage": report.scan_stage,
+        "error": report.error_message,
+    }
+    if report.status == ScanReport.Status.COMPLETE:
+        data["redirect"] = f"/scan/{report.id}/"
+    elif report.status == ScanReport.Status.FAILED:
+        data["redirect"] = f"/scan/{report.id}/"
+    return JsonResponse(data)
+
+
+def report_detail(request, report_id):
+    report = get_object_or_404(ScanReport, pk=report_id)
+    if report.status == ScanReport.Status.FAILED:
+        return render(
+            request,
+            "diagnostics/error.html",
+            {"message": report.error_message, "report": report},
+        )
+    if report.status != ScanReport.Status.COMPLETE:
+        return redirect("diagnostics:scan_progress", report_id=report.id)
+    ctx = build_report_context(report)
+    return render(request, "diagnostics/report.html", ctx)
+
+
+def compare_scans(request):
+    completed = list(
+        ScanReport.objects.filter(status=ScanReport.Status.COMPLETE).order_by("-created_at")[:10]
+    )
+    id_a = request.GET.get("a")
+    id_b = request.GET.get("b")
+    scan_a = scan_b = None
+    if id_a:
+        scan_a = ScanReport.objects.filter(pk=id_a, status=ScanReport.Status.COMPLETE).first()
+    if id_b:
+        scan_b = ScanReport.objects.filter(pk=id_b, status=ScanReport.Status.COMPLETE).first()
+    if not scan_a and len(completed) >= 1:
+        scan_a = completed[0]
+    if not scan_b and len(completed) >= 2:
+        scan_b = completed[1]
+
+    def metrics(scan):
+        if not scan:
+            return {}
+        snap = scan.system_snapshot or {}
+        hw = snap.get("hardware", {})
+        return {
+            "score": scan.overall_score,
+            "hostname": scan.hostname,
+            "date": scan.created_at,
+            "volumes": hw.get("volumes", []),
+            "ram_gb": hw.get("live_metrics", {}).get("memory", {}).get("total_gb"),
+        }
+
+    ma, mb = metrics(scan_a), metrics(scan_b)
+    score_delta = None
+    if ma.get("score") is not None and mb.get("score") is not None:
+        score_delta = ma["score"] - mb["score"]
+
+    return render(
+        request,
+        "diagnostics/compare.html",
+        {
+            "completed_scans": completed,
+            "scan_a": scan_a,
+            "scan_b": scan_b,
+            "metrics_a": ma,
+            "metrics_b": mb,
+            "score_delta": score_delta,
+        },
+    )
+
+
+@require_GET
+def export_html(request, report_id):
+    report = get_object_or_404(ScanReport, pk=report_id, status=ScanReport.Status.COMPLETE)
+    html = render_to_string(
+        "diagnostics/export_report.html",
+        build_report_context(report),
+    )
+    response = HttpResponse(html, content_type="text/html; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="pc-checker-{report.hostname}-{report.id}.html"'
+    return response
+
+
+@require_GET
+def export_pdf(request, report_id):
+    report = get_object_or_404(ScanReport, pk=report_id, status=ScanReport.Status.COMPLETE)
+    html = render_to_string(
+        "diagnostics/export_report.html",
+        build_report_context(report),
+    )
+    try:
+        from io import BytesIO
+
+        from xhtml2pdf import pisa
+
+        result = BytesIO()
+        pisa.CreatePDF(html, dest=result)
+        response = HttpResponse(result.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'attachment; filename="pc-checker-{report.hostname}-{report.id}.pdf"'
+        )
+        return response
+    except ImportError:
+        return HttpResponse(
+            "PDF export requires: pip install xhtml2pdf. Use HTML export instead.",
+            status=501,
+        )
+
+
+@require_GET
+def report_json(request, report_id):
+    if not _api_key_ok(request):
+        return JsonResponse({"error": "Invalid API key"}, status=403)
+    report = get_object_or_404(ScanReport, pk=report_id)
+    return JsonResponse(
+        {
+            "id": str(report.id),
+            "status": report.status,
+            "progress": report.scan_progress,
+            "stage": report.scan_stage,
+            "hostname": report.hostname,
+            "overall_score": report.overall_score,
+            "system_snapshot": report.system_snapshot,
+            "ai_analysis": report.ai_analysis,
+            "created_at": report.created_at.isoformat(),
+        }
+    )
+
+
+@require_GET
+def api_health(request):
+    return JsonResponse({"status": "ok", "app": "PC Checker Extreme"})

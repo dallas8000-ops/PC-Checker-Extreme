@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.env
+.env.local
+
+# Django
+db.sqlite3
+staticfiles/
+media/
+*.sqlite3
+
+# Render / deploy
+.render/
+
+# IDE / OS
+.idea/
+.vscode/
+*.log
+.DS_Store
+
+# Legacy (removed Electron scaffold)
+node_modules/
+dist/
+release/

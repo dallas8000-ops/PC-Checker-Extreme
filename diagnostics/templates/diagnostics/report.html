@@ -1,0 +1,442 @@
+{% extends "diagnostics/base.html" %}
+
+{% block title %}Report — {{ report.hostname|default:"PC Scan" }}{% endblock %}
+{% block body_class %}page-report{% endblock %}
+
+{% block hud_actions %}
+<a href="{% url 'diagnostics:compare_scans' %}" class="hud-link">COMPARE</a>
+<a href="{% url 'diagnostics:export_html' report_id=report.id %}" class="hud-link">EXPORT HTML</a>
+<a href="{% url 'diagnostics:export_pdf' report_id=report.id %}" class="hud-link">PDF</a>
+<a href="{% url 'diagnostics:home' %}" class="hud-link">HOME</a>
+<a href="{% url 'diagnostics:home' %}#scan-panel" class="btn-hud btn-hud-magenta">NEW SCAN</a>
+{% endblock %}
+
+{% block content %}
+<header class="report-hud">
+  <div>
+    <a href="{% url 'diagnostics:home' %}" class="back-link">← RETURN TO DASHBOARD</a>
+    <h1>{{ report.hostname|default:"SYSTEM REPORT" }}</h1>
+    <p class="muted">SCAN TIMESTAMP {{ report.created_at|date:"Y-m-d · H:i:s" }}
+      {% if ai.ai_powered %} · <span class="ai-badge">NEURAL ENHANCED</span>{% endif %}
+    </p>
+  </div>
+  {% if report.overall_score is not None %}
+  <div class="score-ring" data-score="{{ report.overall_score }}">
+    <span class="score-value">{{ report.overall_score }}</span>
+    <span class="score-label">HEALTH INDEX</span>
+    {% if ai.health_grade %}<span class="grade">{{ ai.health_grade }}</span>{% endif %}
+  </div>
+  {% endif %}
+</header>
+
+{% if ai.plain_english_summary %}
+<section class="card summary-card">
+  <h2>Plain-English summary</h2>
+  <p>{{ ai.plain_english_summary }}</p>
+</section>
+{% endif %}
+
+{% if ai.summary %}
+<section class="card summary-card">
+  <h2>Executive summary</h2>
+  <p>{{ ai.summary }}</p>
+</section>
+{% endif %}
+
+{% if ai.fix_actions %}
+<section class="card">
+  <h2>Fix this — step by step</h2>
+  <ol class="fix-actions-list">
+    {% for fix in ai.fix_actions %}
+    <li>
+      <span class="fix-step">{{ fix.step }}</span>
+      <strong>{{ fix.title }}</strong>
+      <p>{{ fix.detail }}</p>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+
+<nav class="tab-nav" role="tablist">
+  <button type="button" class="tab active" data-tab="overview">Overview</button>
+  <button type="button" class="tab" data-tab="hardware">Hardware</button>
+  <button type="button" class="tab" data-tab="performance">Performance</button>
+  <button type="button" class="tab" data-tab="security">Security</button>
+  <button type="button" class="tab" data-tab="updates">Updates</button>
+  <button type="button" class="tab" data-tab="ai">AI insights</button>
+</nav>
+
+<div class="tab-panel active" id="tab-overview">
+  {% if system_profile.rows %}
+  <section class="card sysinfo-card">
+    <h2>System information</h2>
+    <p class="hint">Same core data as Windows System Information (msinfo32).</p>
+    <table class="sysinfo-table">
+      <tbody>
+        {% for row in system_profile.rows %}
+        <tr>
+          <th scope="row">{{ row.label }}</th>
+          <td>{{ row.value }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>Health checks</h2>
+    <ul class="check-list">
+      {% for check in health.checks %}
+      <li class="check-item severity-{{ check.severity }}">
+        <span class="check-icon"></span>
+        <div>
+          <strong>{{ check.title }}</strong>
+          <p>{{ check.message }}</p>
+        </div>
+      </li>
+      {% empty %}
+      <li>No health checks recorded.</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {% if live_metrics %}
+  <section class="card metrics-grid">
+    <h2>Live metrics</h2>
+    <div class="metrics">
+      <div class="metric">
+        <span class="metric-label">CPU usage</span>
+        <span class="metric-value">{{ live_metrics.cpu_percent }}%</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">RAM</span>
+        <span class="metric-value">{{ live_metrics.memory.percent_used }}% · {{ live_metrics.memory.total_gb }} GB</span>
+      </div>
+      {% for disk in live_metrics.disks %}
+      <div class="metric">
+        <span class="metric-label">Disk {{ disk.mount }}</span>
+        <span class="metric-value">{{ disk.percent_used }}% · {{ disk.free_gb }} GB free</span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if ai.priority_actions %}
+  <section class="card">
+    <h2>Priority actions</h2>
+    <ol class="action-list">
+      {% for action in ai.priority_actions %}
+      <li class="priority-{{ action.priority }}">
+        <span class="priority-tag">{{ action.priority }}</span>
+        <strong>{{ action.title }}</strong>
+        <p>{{ action.description }}</p>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+</div>
+
+<div class="tab-panel" id="tab-hardware">
+  {% if volumes %}
+  <section class="card drives-explorer">
+    <h2>Devices and drives</h2>
+    <p class="hint">Same volumes as File Explorer → This PC.</p>
+    <div class="drive-grid">
+      {% for vol in volumes %}
+      <article class="drive-card{% if vol.is_windows %} drive-windows{% endif %}">
+        <div class="drive-card-head">
+          <span class="drive-icon" aria-hidden="true">{% if vol.is_windows %}⊞{% else %}◈{% endif %}</span>
+          <div>
+            <strong class="drive-title">{{ vol.label }}</strong>
+            <span class="drive-letter">{{ vol.letter }}</span>
+          </div>
+        </div>
+        <div class="drive-bar-track" title="{{ vol.percent_used }}% used">
+          <div class="drive-bar-used" style="width: {{ vol.percent_used }}%"></div>
+        </div>
+        <p class="drive-free-text">{{ vol.free_text }}</p>
+        <p class="drive-meta muted">{{ vol.filesystem }}{% if vol.total_gb %} · {{ vol.used_gb }} GB used{% endif %}</p>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if storage_summary %}
+  <section class="card hardware-summary">
+    <h2>Hardware inventory</h2>
+    <div class="metrics">
+      <div class="metric">
+        <span class="metric-label">Physical drives</span>
+        <span class="metric-value">{{ storage_summary.physical_disk_count|default:"0" }}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Volumes (C:, D:, …)</span>
+        <span class="metric-value">{{ storage_summary.volume_count|default:"0" }}</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Drivers listed</span>
+        <span class="metric-value">{{ storage_summary.driver_count|default:"0" }}</span>
+      </div>
+    </div>
+    <p class="hint">Includes all WMI physical disks, each partition letter, GPU driver info, motherboard/BIOS, and signed device drivers. Run a new scan if this report is from before the update.</p>
+  </section>
+  {% endif %}
+
+  {% if smart.disks %}
+  <section class="card">
+    <h2>SMART / disk health</h2>
+    <table class="component-table">
+      <thead>
+        <tr><th>Disk</th><th>Health</th><th>Type</th><th>Temp</th><th>Size</th></tr>
+      </thead>
+      <tbody>
+        {% for d in smart.disks %}
+        <tr>
+          <td>{{ d.FriendlyName }}</td>
+          <td>{{ d.HealthStatus }}</td>
+          <td>{{ d.MediaType }}</td>
+          <td>{% if d.Temperature %}{{ d.Temperature }}°C{% else %}—{% endif %}</td>
+          <td>{{ d.SizeGB }} GB</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% for category, items in components_by_category.items %}
+  <section class="card collapsible driver-section" {% if category == "Drivers" %}id="drivers-section"{% endif %}>
+    <button type="button" class="collapse-trigger" aria-expanded="true">
+      <h2>{{ category }} <span class="count">({{ items|length }})</span></h2>
+      <span class="chevron">▼</span>
+    </button>
+    <div class="collapse-content">
+      {% if category == "Drivers" %}
+      <input type="search" class="driver-search" placeholder="Filter drivers…" data-driver-filter>
+      {% endif %}
+      <table class="component-table">
+        <thead>
+          <tr><th>Component</th><th>Manufacturer</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr class="driver-row" data-name="{{ item.name|lower }}">
+            <td>{{ item.name }}</td>
+            <td><span class="mfr-badge">{{ item.manufacturer }}</span></td>
+            <td class="details-cell">
+              {% for k, v in item.details.items %}
+                {% if k == "update_url" and v %}
+                <a href="{{ v }}" target="_blank" rel="noopener" class="detail-chip link-chip">Get updates ↗</a>
+                {% elif v and k != "update_url" %}
+                <span class="detail-chip">{{ k }}: {{ v }}</span>
+                {% endif %}
+              {% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% empty %}
+  <p class="muted">No hardware components detected.</p>
+  {% endfor %}
+</div>
+
+<div class="tab-panel" id="tab-performance">
+  {% if benchmark %}
+  <section class="card">
+    <h2>Benchmark snapshot</h2>
+    <div class="metrics">
+      <div class="metric">
+        <span class="metric-label">CPU micro-bench</span>
+        <span class="metric-value">{{ benchmark.cpu_seconds }}s · score {{ benchmark.cpu_score }}</span>
+      </div>
+      {% if benchmark.disk_write_4mb_seconds %}
+      <div class="metric">
+        <span class="metric-label">Disk write 4MB</span>
+        <span class="metric-value">{{ benchmark.disk_write_4mb_seconds }}s · score {{ benchmark.disk_score }}</span>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+  {% if temperatures.sensors %}
+  <section class="card">
+    <h2>Temperature</h2>
+    <ul class="check-list">
+      {% for s in temperatures.sensors %}
+      <li class="check-item severity-ok">
+        <span class="check-icon"></span>
+        <div><strong>{{ s.Name }}</strong><p>{{ s.Type }} — {{ s.Celsius }}°C</p></div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if temperatures.note %}<p class="hint">{{ temperatures.note }}</p>{% endif %}
+  </section>
+  {% endif %}
+</div>
+
+<div class="tab-panel" id="tab-security">
+  {% if security.available %}
+  <section class="card">
+    <h2>Windows security</h2>
+    <p class="detail-chip">Defender real-time: {{ security.defender.RealTimeProtectionEnabled|default:"?" }}</p>
+    <ul class="check-list">
+      {% for fw in security.firewall %}
+      <li class="check-item severity-ok">
+        <span class="check-icon"></span>
+        <div><strong>Firewall {{ fw.Name }}</strong><p>{% if fw.Enabled %}Enabled{% else %}Disabled{% endif %}</p></div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  {% if startup.programs %}
+  <section class="card">
+    <h2>Startup programs ({{ startup.count }})</h2>
+    <table class="component-table">
+      <thead><tr><th>Name</th><th>Location</th></tr></thead>
+      <tbody>
+        {% for p in startup.programs %}
+        <tr><td>{{ p.Name }}</td><td class="muted">{{ p.Location }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+  {% if duplicate_drivers %}
+  <section class="card">
+    <h2>Possible duplicate drivers</h2>
+    <ul>
+      {% for d in duplicate_drivers %}
+      <li>{{ d.device }} ↔ {{ d.conflicts_with }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+
+<div class="tab-panel" id="tab-updates">
+  <section class="card">
+    <h2>Outdated applications (winget)</h2>
+    {% if outdated_packages %}
+    <table class="component-table">
+      <thead>
+        <tr><th>Application</th><th>Current</th><th>Available</th></tr>
+      </thead>
+      <tbody>
+        {% for pkg in outdated_packages %}
+        <tr>
+          <td>{{ pkg.name }}</td>
+          <td>{{ pkg.current_version }}</td>
+          <td><span class="update-available">{{ pkg.available_version }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if winget_batch_command %}
+    <p class="hint">Copy to run in PowerShell (review before executing):</p>
+    <textarea class="winget-cmd" readonly id="winget-cmd">{{ winget_batch_command }}</textarea>
+    <button type="button" class="btn-hud" id="copy-winget">Copy winget commands</button>
+    {% endif %}
+    {% elif snapshot.software.outdated_winget.skipped %}
+    <p class="muted">{{ snapshot.software.outdated_winget.note }}</p>
+    {% else %}
+    <p>No winget upgrades found, or winget is unavailable.
+      {% if snapshot.software.outdated_winget.error %}<br><span class="muted">{{ snapshot.software.outdated_winget.error }}</span>{% endif %}
+    </p>
+    {% endif %}
+  </section>
+
+  {% if ai.software_update_plan %}
+  <section class="card">
+    <h2>AI software update plan</h2>
+    <ul class="update-plan">
+      {% for item in ai.software_update_plan %}
+      <li class="urgency-{{ item.urgency }}">
+        <strong>{{ item.app_name }}</strong>
+        <span class="urgency-tag">{{ item.urgency }}</span>
+        <p>{{ item.notes }}</p>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if windows_updates %}
+  <section class="card">
+    <h2>Pending Windows updates</h2>
+    <ul class="win-updates">
+      {% for u in windows_updates %}
+      <li>{{ u.Title }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+
+<div class="tab-panel" id="tab-ai">
+  {% if ai.interactive_sections %}
+  <section class="interactive-sections">
+    {% for section in ai.interactive_sections %}
+    <article class="card interactive-card" data-section-id="{{ section.id }}">
+      <button type="button" class="interactive-toggle" aria-expanded="false">
+        <span class="section-icon">{{ section.icon|default:"📋" }}</span>
+        <div class="interactive-head">
+          <h3>{{ section.title }}</h3>
+          <p class="interactive-summary">{{ section.expandable_summary }}</p>
+        </div>
+        <span class="chevron">+</span>
+      </button>
+      <div class="interactive-body hidden">
+        <div class="interactive-details">{{ section.details|linebreaks }}</div>
+      </div>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if ai.component_reviews %}
+  <section class="card">
+    <h2>Component reviews</h2>
+    <div class="review-grid">
+      {% for review in ai.component_reviews %}
+      <article class="review-card status-{{ review.status }}">
+        <header>
+          <span class="review-cat">{{ review.category }}</span>
+          <span class="status-dot" title="{{ review.status }}"></span>
+        </header>
+        <h4>{{ review.component_name }}</h4>
+        <p class="mfr">{{ review.manufacturer }}</p>
+        <p>{{ review.findings }}</p>
+        {% if review.recommendation %}
+        <p class="recommendation">→ {{ review.recommendation }}</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if ai.upgrade_suggestions %}
+  <section class="card">
+    <h2>Upgrade suggestions</h2>
+    <ul class="upgrade-list">
+      {% for up in ai.upgrade_suggestions %}
+      <li>
+        <strong>{{ up.part }}</strong>
+        <span class="impact impact-{{ up.estimated_impact }}">{{ up.estimated_impact }} impact</span>
+        <p>{{ up.reason }}</p>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

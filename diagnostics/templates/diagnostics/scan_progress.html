@@ -1,0 +1,29 @@
+{% extends "diagnostics/base.html" %}
+{% load static %}
+
+{% block title %}Scan in progress — PC Checker Extreme{% endblock %}
+
+{% block content %}
+<section class="card scan-progress-card">
+  <header class="panel-head">
+    <span class="panel-tag">OPS//SCAN</span>
+    <h2>Diagnostic sequence running</h2>
+  </header>
+  <p class="muted">{{ report.hostname }} · do not close this page</p>
+
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-fill" id="progress-fill" style="width: 0%"></div>
+  </div>
+  <p class="progress-pct"><span id="progress-pct">0</span>%</p>
+  <p class="progress-stage" id="progress-stage">Starting…</p>
+
+  <p class="panel-hint">Hardware → SMART → security → software → AI analysis</p>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  window.PCC_SCAN_ID = "{{ report.id }}";
+</script>
+<script src="{% static 'diagnostics/js/scan_progress.js' %}"></script>
+{% endblock %}

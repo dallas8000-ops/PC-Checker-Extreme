@@ -1,0 +1,60 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}PC Checker Extreme{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'diagnostics/css/app.css' %}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}page-dashboard{% endblock %}">
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <header class="hud-header">
+    <div class="hud-left">
+      <a href="{% url 'diagnostics:home' %}" class="brand">
+        <span class="brand-mark"></span>
+        <span class="brand-text">PC CHECKER <em>EXTREME</em></span>
+      </a>
+      <div class="status-pills">
+        <span class="pill pill-cyan"><span class="dot"></span> SYS ONLINE</span>
+        <span class="pill pill-magenta">WMI READY</span>
+      </div>
+    </div>
+    <div class="hud-center">
+      <span class="hud-label">DIAGNOSTIC COMMAND CENTER</span>
+    </div>
+    <div class="hud-right">
+      <button type="button" class="hud-link theme-toggle" id="theme-toggle" title="Toggle light/dark theme">THEME</button>
+      <a href="{% url 'diagnostics:compare_scans' %}" class="hud-link">COMPARE</a>
+      {% block hud_actions %}
+      <a href="{% url 'diagnostics:home' %}" class="hud-link">DASHBOARD</a>
+      {% endblock %}
+    </div>
+  </header>
+
+  <main class="hud-main">
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="hud-footer">
+    <span>NEURAL DIAGNOSTICS v1.0</span>
+    <span class="sep">|</span>
+    <span>Django · WMI · winget · AI</span>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="{% static 'diagnostics/js/app.js' %}"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

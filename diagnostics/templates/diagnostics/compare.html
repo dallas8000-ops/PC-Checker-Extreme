@@ -1,0 +1,55 @@
+{% extends "diagnostics/base.html" %}
+
+{% block title %}Compare scans — PC Checker Extreme{% endblock %}
+{% block body_class %}page-report{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h2>Compare scans over time</h2>
+  <form method="get" class="compare-form">
+    <label>Scan A (newer)
+      <select name="a">
+        {% for s in completed_scans %}
+        <option value="{{ s.id }}" {% if scan_a and scan_a.id == s.id %}selected{% endif %}>
+          {{ s.hostname }} — {{ s.created_at|date:"M j H:i" }} — {{ s.overall_score }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Scan B (older)
+      <select name="b">
+        {% for s in completed_scans %}
+        <option value="{{ s.id }}" {% if scan_b and scan_b.id == s.id %}selected{% endif %}>
+          {{ s.hostname }} — {{ s.created_at|date:"M j H:i" }} — {{ s.overall_score }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn-hud btn-hud-magenta">Compare</button>
+  </form>
+</section>
+
+{% if scan_a and scan_b %}
+<section class="card">
+  <div class="compare-grid">
+    <div>
+      <h3>{{ metrics_a.hostname }}</h3>
+      <p class="muted">{{ metrics_a.date|date:"M j, Y H:i" }}</p>
+      <p class="stat-num magenta">{{ metrics_a.score }}/100</p>
+      <p>RAM: {{ metrics_a.ram_gb }} GB</p>
+      <ul>{% for v in metrics_a.volumes %}<li>{{ v.display_name }} — {{ v.free_text }}</li>{% endfor %}</ul>
+    </div>
+    <div>
+      <h3>{{ metrics_b.hostname }}</h3>
+      <p class="muted">{{ metrics_b.date|date:"M j, Y H:i" }}</p>
+      <p class="stat-num cyan">{{ metrics_b.score }}/100</p>
+      <p>RAM: {{ metrics_b.ram_gb }} GB</p>
+      <ul>{% for v in metrics_b.volumes %}<li>{{ v.display_name }} — {{ v.free_text }}</li>{% endfor %}</ul>
+    </div>
+  </div>
+  {% if score_delta is not None %}
+  <p class="hint">Health score change (A − B): {% if score_delta > 0 %}+{% endif %}{{ score_delta }} points{% if score_delta > 0 %} ↑{% elif score_delta < 0 %} ↓{% endif %}</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
