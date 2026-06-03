@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -7,7 +8,7 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-IS_RENDER = os.environ.get("RENDER") == "true"
+IS_RENDER = os.environ.get("RENDER", "").lower() in ("1", "true", "yes")
 
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
@@ -18,9 +19,16 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() in ("1", "true", "yes")
 
 _allowed = os.environ.get("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 if IS_RENDER:
+    # Render health checks and routing can hit either the onrender hostname or a custom domain.
+    _allowed.append(".onrender.com")
     render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")
     if render_host and render_host not in _allowed:
         _allowed.append(render_host)
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
+    if render_url:
+        parsed = urlparse(render_url)
+        if parsed.hostname:
+            _allowed.append(parsed.hostname)
 ALLOWED_HOSTS = [h.strip() for h in _allowed if h.strip()]
 
 CSRF_TRUSTED_ORIGINS = []
