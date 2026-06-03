@@ -16,6 +16,15 @@ AI-powered PC diagnostics built with **Django**. Scans Windows hardware by manuf
 
 See **[RENDER.md](RENDER.md)** for hosting the web UI on [Render](https://render.com) (PostgreSQL, Gunicorn, Blueprint). Full WMI/winget scans still require running on **Windows locally**.
 
+## Hybrid API and Alert Spec
+
+See **[API_V1_SPEC.md](API_V1_SPEC.md)** for the implementation-ready contract for:
+
+- device enrollment and check-ins
+- incident triggers and severity thresholds
+- AI enrichment boundaries
+- fleet digests and notifications
+
 ## Requirements
 
 - Windows 10/11 (full hardware/update features)
