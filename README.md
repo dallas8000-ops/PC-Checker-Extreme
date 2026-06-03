@@ -90,6 +90,7 @@ Double-click **`Launch PC Checker Extreme.vbs`** if you want to start without op
 
 - `GET /api/health/` — Health check
 - `GET /api/scan/<uuid>/` — Full scan report JSON
+- `GET /api/driver-lookup/?vendor=Dell&model=Latitude` — Official support/driver source suggestions
 
 ## Project structure
 

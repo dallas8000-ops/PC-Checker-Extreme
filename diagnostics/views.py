@@ -14,6 +14,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 
 from .models import ScanReport
 from .report_context import build_report_context
+from .services.driver_lookup import resolve_driver_sources
 from .services.scan_runner import start_background_scan
 
 
@@ -305,3 +306,30 @@ def report_json(request, report_id):
 @require_GET
 def api_health(request):
     return JsonResponse({"status": "ok", "app": "PC Checker Extreme"})
+
+
+@require_GET
+def driver_lookup(request):
+    if not _api_key_ok(request):
+        return JsonResponse({"error": "Invalid API key"}, status=403)
+
+    vendor = (request.GET.get("vendor") or "").strip()
+    model = (request.GET.get("model") or "").strip()
+    component = (request.GET.get("component") or "").strip()
+    hardware_id = (request.GET.get("hardware_id") or "").strip()
+
+    if not any([vendor, model, component, hardware_id]):
+        return JsonResponse(
+            {
+                "error": "Provide at least one of: vendor, model, component, hardware_id",
+            },
+            status=400,
+        )
+
+    payload = resolve_driver_sources(
+        vendor=vendor,
+        model=model,
+        component=component,
+        hardware_id=hardware_id,
+    )
+    return JsonResponse(payload)

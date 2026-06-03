@@ -38,3 +38,35 @@ class ScanReport(models.Model):
 
     def __str__(self):
         return f"Scan {self.hostname or self.id} ({self.status})"
+
+
+class DriverSource(models.Model):
+    class SourceType(models.TextChoices):
+        OEM = "oem", "OEM"
+        COMPONENT = "component", "Component"
+        GENERIC = "generic", "Generic"
+
+    key = models.SlugField(max_length=64, unique=True)
+    vendor_name = models.CharField(max_length=120)
+    match_terms = models.TextField(
+        help_text="Comma-separated terms used for matching (e.g. dell,latitude,optiplex)",
+        blank=True,
+    )
+    source_type = models.CharField(
+        max_length=20,
+        choices=SourceType.choices,
+        default=SourceType.GENERIC,
+    )
+    support_url = models.URLField(blank=True)
+    driver_url = models.URLField(blank=True)
+    troubleshooting_url = models.URLField(blank=True)
+    priority = models.PositiveSmallIntegerField(default=100)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["priority", "vendor_name"]
+
+    def __str__(self):
+        return f"{self.vendor_name} ({self.source_type})"

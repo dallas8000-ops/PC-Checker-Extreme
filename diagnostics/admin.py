@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import ScanReport
+from .models import DriverSource, ScanReport
 
 
 @admin.register(ScanReport)
@@ -9,3 +9,11 @@ class ScanReportAdmin(admin.ModelAdmin):
     list_filter = ("status", "owner")
     search_fields = ("hostname", "owner__username", "owner__email")
     readonly_fields = ("id", "created_at", "updated_at")
+
+
+@admin.register(DriverSource)
+class DriverSourceAdmin(admin.ModelAdmin):
+    list_display = ("vendor_name", "source_type", "priority", "is_active")
+    list_filter = ("source_type", "is_active")
+    search_fields = ("vendor_name", "match_terms", "key")
+    ordering = ("priority", "vendor_name")
