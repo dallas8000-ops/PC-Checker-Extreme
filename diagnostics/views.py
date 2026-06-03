@@ -78,6 +78,12 @@ def _live_telemetry():
         }
 
 
+def landing(request):
+    if request.user.is_authenticated:
+        return redirect("diagnostics:home")
+    return render(request, "diagnostics/landing.html")
+
+
 def home(request):
     is_cloud_host = os.environ.get("RENDER") == "true" or sys.platform != "win32"
     recent = list(_report_queryset_for(request)[:8])

@@ -1,0 +1,26 @@
+{% extends "diagnostics/base.html" %}
+
+{% block title %}PC Checker Extreme — Landing{% endblock %}
+
+{% block hud_actions %}
+<a href="{% url 'diagnostics:login' %}" class="btn-hud btn-hud-magenta">LOG IN</a>
+{% endblock %}
+
+{% block content %}
+<section class="card auth-shell auth-card">
+  <header class="panel-head">
+    <span class="panel-tag">WELCOME//LANDING</span>
+    <h1>PC Checker Extreme</h1>
+  </header>
+  <p class="panel-desc">
+    Fleet-ready PC diagnostics platform with private accounts, report history, and OEM/component support link intelligence.
+  </p>
+  <div class="scan-form" style="gap:0.75rem;">
+    <a href="{% url 'diagnostics:signup' %}" class="btn-hud btn-hud-magenta btn-hud-lg">CREATE ACCOUNT</a>
+    <a href="{% url 'diagnostics:login' %}" class="btn-hud btn-hud-lg">LOG IN</a>
+  </div>
+  <p class="panel-hint">
+    After login, your dashboard is at <strong>/app/</strong>. API health remains at <strong>/api/health/</strong>.
+  </p>
+</section>
+{% endblock %}
