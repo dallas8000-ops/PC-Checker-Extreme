@@ -317,6 +317,7 @@ def driver_lookup(request):
     model = (request.GET.get("model") or "").strip()
     component = (request.GET.get("component") or "").strip()
     hardware_id = (request.GET.get("hardware_id") or "").strip()
+    segment = (request.GET.get("segment") or "general").strip().lower()
 
     if not any([vendor, model, component, hardware_id]):
         return JsonResponse(
@@ -331,5 +332,6 @@ def driver_lookup(request):
         model=model,
         component=component,
         hardware_id=hardware_id,
+        segment=segment,
     )
     return JsonResponse(payload)

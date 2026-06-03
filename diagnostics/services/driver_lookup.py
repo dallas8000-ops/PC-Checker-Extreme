@@ -107,9 +107,22 @@ def _combined_query(vendor: str, model: str, component: str, hardware_id: str) -
     return " ".join(part for part in [vendor, model, component, hardware_id] if part).strip()
 
 
-def _from_db(query_tokens: set[str]) -> list[dict]:
+def _from_db(query_tokens: set[str], segment: str = "general") -> list[dict]:
     matches = []
-    for source in DriverSource.objects.filter(is_active=True).order_by("priority", "vendor_name"):
+    allowed_segments = {"general", segment or "general"}
+    queryset = DriverSource.objects.filter(
+        is_active=True,
+        customer_segment__in=allowed_segments,
+    )
+    sources = list(queryset)
+    sources.sort(
+        key=lambda s: (
+            0 if s.customer_segment == segment else 1,
+            s.priority,
+            s.vendor_name.lower(),
+        )
+    )
+    for source in sources:
         terms = _tokenize(source.match_terms)
         if terms and not (terms & query_tokens):
             continue
@@ -117,6 +130,7 @@ def _from_db(query_tokens: set[str]) -> list[dict]:
             {
                 "key": source.key,
                 "vendor_name": source.vendor_name,
+                "customer_segment": source.customer_segment,
                 "source_type": source.source_type,
                 "support_url": source.support_url,
                 "driver_url": source.driver_url,
@@ -137,6 +151,7 @@ def _from_defaults(query_tokens: set[str]) -> list[dict]:
                 {
                     "key": source["key"],
                     "vendor_name": source["vendor_name"],
+                    "customer_segment": "general",
                     "source_type": source["source_type"],
                     "support_url": source["support_url"],
                     "driver_url": source["driver_url"],
@@ -154,11 +169,12 @@ def resolve_driver_sources(
     model: str = "",
     component: str = "",
     hardware_id: str = "",
+    segment: str = "general",
 ) -> dict:
     query_text = _combined_query(vendor, model, component, hardware_id)
     query_tokens = _tokenize(query_text)
 
-    custom_matches = _from_db(query_tokens)
+    custom_matches = _from_db(query_tokens, segment=segment)
     default_matches = _from_defaults(query_tokens)
 
     merged = []
@@ -183,6 +199,7 @@ def resolve_driver_sources(
             "model": model,
             "component": component,
             "hardware_id": hardware_id,
+            "segment": segment,
             "query_text": query_text,
         },
         "matches": merged,

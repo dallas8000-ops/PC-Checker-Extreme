@@ -13,7 +13,13 @@ class ScanReportAdmin(admin.ModelAdmin):
 
 @admin.register(DriverSource)
 class DriverSourceAdmin(admin.ModelAdmin):
-    list_display = ("vendor_name", "source_type", "priority", "is_active")
-    list_filter = ("source_type", "is_active")
-    search_fields = ("vendor_name", "match_terms", "key")
-    ordering = ("priority", "vendor_name")
+    list_display = (
+        "vendor_name",
+        "customer_segment",
+        "source_type",
+        "priority",
+        "is_active",
+    )
+    list_filter = ("customer_segment", "source_type", "is_active")
+    search_fields = ("vendor_name", "match_terms", "key", "customer_segment")
+    ordering = ("customer_segment", "priority", "vendor_name")

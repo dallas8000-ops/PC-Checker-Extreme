@@ -41,12 +41,25 @@ class ScanReport(models.Model):
 
 
 class DriverSource(models.Model):
+    class CustomerSegment(models.TextChoices):
+        GENERAL = "general", "General"
+        SMALL_BIZ = "smallbiz", "Small Business"
+        MSP = "msp", "MSP"
+        ENTERPRISE = "enterprise", "Enterprise"
+        GAMING = "gaming", "Gaming"
+        CREATIVE = "creative", "Creative"
+
     class SourceType(models.TextChoices):
         OEM = "oem", "OEM"
         COMPONENT = "component", "Component"
         GENERIC = "generic", "Generic"
 
-    key = models.SlugField(max_length=64, unique=True)
+    key = models.SlugField(max_length=64)
+    customer_segment = models.CharField(
+        max_length=24,
+        choices=CustomerSegment.choices,
+        default=CustomerSegment.GENERAL,
+    )
     vendor_name = models.CharField(max_length=120)
     match_terms = models.TextField(
         help_text="Comma-separated terms used for matching (e.g. dell,latitude,optiplex)",
@@ -66,6 +79,7 @@ class DriverSource(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        unique_together = ("key", "customer_segment")
         ordering = ["priority", "vendor_name"]
 
     def __str__(self):

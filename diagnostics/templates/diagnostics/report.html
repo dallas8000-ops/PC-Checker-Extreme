@@ -138,6 +138,35 @@
     </ol>
   </section>
   {% endif %}
+
+  {% if driver_support_sources %}
+  <section class="card">
+    <h2>Official support and driver sources</h2>
+    <p class="hint">Auto-matched from detected hardware manufacturers in this scan.</p>
+    <table class="component-table">
+      <thead>
+        <tr><th>Vendor</th><th>Matched from</th><th>Links</th></tr>
+      </thead>
+      <tbody>
+        {% for src in driver_support_sources %}
+        <tr>
+          <td><span class="mfr-badge">{{ src.vendor_name }}</span></td>
+          <td>
+            {{ src.matched_vendor }}
+            {% if src.matched_model %}<span class="muted"> · {{ src.matched_model }}</span>{% endif %}
+            {% if src.matched_component %}<span class="muted"> · {{ src.matched_component }}</span>{% endif %}
+          </td>
+          <td class="details-cell">
+            {% if src.support_url %}<a href="{{ src.support_url }}" target="_blank" rel="noopener" class="detail-chip link-chip">Support ↗</a>{% endif %}
+            {% if src.driver_url %}<a href="{{ src.driver_url }}" target="_blank" rel="noopener" class="detail-chip link-chip">Drivers ↗</a>{% endif %}
+            {% if src.troubleshooting_url %}<a href="{{ src.troubleshooting_url }}" target="_blank" rel="noopener" class="detail-chip link-chip">Troubleshooting ↗</a>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
 </div>
 
 <div class="tab-panel" id="tab-hardware">

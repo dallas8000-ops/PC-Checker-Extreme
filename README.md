@@ -63,6 +63,7 @@ The server runs in Cursor’s **integrated terminal** (a tab at the bottom of th
 - **SMART disk health**, temperatures, security (Defender/firewall), startup programs
 - **Benchmark** CPU/disk micro-score
 - **Driver update links**, duplicate driver flags, **copy winget commands**
+- **Segment-aware vendor sources** — OEM-first support/driver/troubleshooting links by customer segment
 - **AI**: plain-English summary, fix-this steps, upgrade advisor
 - **Light/dark theme** (THEME button in header)
 - **REST API**: `GET /api/scan/<uuid>/` (optional `PCC_API_KEY` header)
@@ -71,6 +72,7 @@ The server runs in Cursor’s **integrated terminal** (a tab at the bottom of th
 ```powershell
 pip install -r requirements.txt
 python manage.py migrate
+python manage.py seed_driver_sources --segment all
 ```
 
 ### Optional: desktop shortcut (no editor)
@@ -91,6 +93,7 @@ Double-click **`Launch PC Checker Extreme.vbs`** if you want to start without op
 - `GET /api/health/` — Health check
 - `GET /api/scan/<uuid>/` — Full scan report JSON
 - `GET /api/driver-lookup/?vendor=Dell&model=Latitude` — Official support/driver source suggestions
+- `GET /api/driver-lookup/?vendor=Dell&model=Latitude&segment=msp` — Segment-prioritized source suggestions
 
 ## Project structure
 
