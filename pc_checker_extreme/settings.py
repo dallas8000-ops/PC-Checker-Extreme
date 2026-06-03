@@ -17,19 +17,23 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() in ("1", "true", "yes")
 
-_allowed = os.environ.get("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
-if IS_RENDER:
-    # Render health checks and routing can hit either the onrender hostname or a custom domain.
-    _allowed.append(".onrender.com")
-    render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")
-    if render_host and render_host not in _allowed:
-        _allowed.append(render_host)
-    render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
-    if render_url:
-        parsed = urlparse(render_url)
-        if parsed.hostname:
-            _allowed.append(parsed.hostname)
-ALLOWED_HOSTS = [h.strip() for h in _allowed if h.strip()]
+_allowed_env = os.environ.get("DJANGO_ALLOWED_HOSTS", "").strip()
+if IS_RENDER and not _allowed_env:
+    # On Render, allow all hosts by default so internal/custom-domain health checks don't fail with 400.
+    ALLOWED_HOSTS = ["*"]
+else:
+    _allowed = (_allowed_env or "127.0.0.1,localhost").split(",")
+    if IS_RENDER:
+        _allowed.append(".onrender.com")
+        render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")
+        if render_host and render_host not in _allowed:
+            _allowed.append(render_host)
+        render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
+        if render_url:
+            parsed = urlparse(render_url)
+            if parsed.hostname:
+                _allowed.append(parsed.hostname)
+    ALLOWED_HOSTS = [h.strip() for h in _allowed if h.strip()]
 
 CSRF_TRUSTED_ORIGINS = []
 _trusted = os.environ.get("CSRF_TRUSTED_ORIGINS", "")
