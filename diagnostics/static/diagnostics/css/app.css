@@ -187,7 +187,7 @@ body {
 .btn-hud:hover {
   background: rgba(255, 45, 154, 0.3);
   box-shadow: var(--glow-magenta);
-  color: #fff;
+  color: var(--text);
   text-decoration: none;
 }
 
@@ -1171,6 +1171,83 @@ body.theme-light .grid-bg::after {
   font-size: 0.75rem;
   letter-spacing: 0.1em;
   color: var(--cyan);
+}
+
+.inline-form {
+  display: inline-flex;
+  margin: 0;
+}
+
+.inline-form .hud-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.auth-shell {
+  max-width: 560px;
+  margin: 2rem auto;
+}
+
+.auth-card {
+  padding: 1.5rem;
+}
+
+.auth-card h1 {
+  margin: 0.25rem 0 1rem;
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: 0.12em;
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.auth-field label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.auth-field input {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  background: rgba(6, 10, 20, 0.85);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius);
+  font: inherit;
+}
+
+.auth-field input:focus {
+  outline: none;
+  border-color: rgba(0, 240, 255, 0.45);
+  box-shadow: var(--glow-cyan);
+}
+
+.auth-errors,
+.auth-help {
+  margin: 0;
+  padding-left: 1rem;
+  color: var(--muted);
+}
+
+.auth-errors {
+  color: #ff8bc7;
+}
+
+.auth-meta {
+  margin-top: 1rem;
+  color: var(--muted);
 }
 
 .error-card { text-align: center; padding: 3rem; }

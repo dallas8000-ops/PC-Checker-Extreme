@@ -4,6 +4,9 @@ import socket
 import sys
 
 from django.conf import settings
+from django.contrib.auth import login
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import UserCreationForm
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -12,6 +15,12 @@ from django.views.decorators.http import require_GET, require_http_methods
 from .models import ScanReport
 from .report_context import build_report_context
 from .services.scan_runner import start_background_scan
+
+
+def _report_queryset_for(request):
+    if request.user.is_authenticated:
+        return ScanReport.objects.filter(owner=request.user)
+    return ScanReport.objects.none()
 
 
 def _api_key_ok(request) -> bool:
@@ -70,7 +79,7 @@ def _live_telemetry():
 
 def home(request):
     is_cloud_host = os.environ.get("RENDER") == "true" or sys.platform != "win32"
-    recent = list(ScanReport.objects.all()[:8])
+    recent = list(_report_queryset_for(request)[:8])
     history_scores = [
         s.overall_score for s in reversed(recent) if s.overall_score is not None
     ]
@@ -94,6 +103,20 @@ def home(request):
     )
 
 
+def signup(request):
+    if request.user.is_authenticated:
+        return redirect("diagnostics:home")
+
+    form = UserCreationForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        user = form.save()
+        login(request, user)
+        return redirect("diagnostics:home")
+
+    return render(request, "registration/signup.html", {"form": form})
+
+
+@login_required
 @require_http_methods(["GET", "POST"])
 def start_scan(request):
     if request.method == "GET":
@@ -102,6 +125,7 @@ def start_scan(request):
     include_ai = request.POST.get("include_ai", "on") == "on"
     include_slow_checks = request.POST.get("include_slow_checks") == "on"
     report = ScanReport.objects.create(
+        owner=request.user,
         status=ScanReport.Status.SCANNING,
         hostname=socket.gethostname(),
         scan_progress=0,
@@ -111,16 +135,18 @@ def start_scan(request):
     return redirect("diagnostics:scan_progress", report_id=report.id)
 
 
+@login_required
 def scan_progress(request, report_id):
-    report = get_object_or_404(ScanReport, pk=report_id)
+    report = get_object_or_404(_report_queryset_for(request), pk=report_id)
     return render(request, "diagnostics/scan_progress.html", {"report": report})
 
 
+@login_required
 @require_GET
 def scan_status(request, report_id):
     if not _api_key_ok(request):
         return JsonResponse({"error": "Invalid API key"}, status=403)
-    report = get_object_or_404(ScanReport, pk=report_id)
+    report = get_object_or_404(_report_queryset_for(request), pk=report_id)
     data = {
         "id": str(report.id),
         "status": report.status,
@@ -135,8 +161,9 @@ def scan_status(request, report_id):
     return JsonResponse(data)
 
 
+@login_required
 def report_detail(request, report_id):
-    report = get_object_or_404(ScanReport, pk=report_id)
+    report = get_object_or_404(_report_queryset_for(request), pk=report_id)
     if report.status == ScanReport.Status.FAILED:
         return render(
             request,
@@ -149,17 +176,26 @@ def report_detail(request, report_id):
     return render(request, "diagnostics/report.html", ctx)
 
 
+@login_required
 def compare_scans(request):
     completed = list(
-        ScanReport.objects.filter(status=ScanReport.Status.COMPLETE).order_by("-created_at")[:10]
+        _report_queryset_for(request)
+        .filter(status=ScanReport.Status.COMPLETE)
+        .order_by("-created_at")[:10]
     )
     id_a = request.GET.get("a")
     id_b = request.GET.get("b")
     scan_a = scan_b = None
     if id_a:
-        scan_a = ScanReport.objects.filter(pk=id_a, status=ScanReport.Status.COMPLETE).first()
+        scan_a = _report_queryset_for(request).filter(
+            pk=id_a,
+            status=ScanReport.Status.COMPLETE,
+        ).first()
     if id_b:
-        scan_b = ScanReport.objects.filter(pk=id_b, status=ScanReport.Status.COMPLETE).first()
+        scan_b = _report_queryset_for(request).filter(
+            pk=id_b,
+            status=ScanReport.Status.COMPLETE,
+        ).first()
     if not scan_a and len(completed) >= 1:
         scan_a = completed[0]
     if not scan_b and len(completed) >= 2:
@@ -197,9 +233,14 @@ def compare_scans(request):
     )
 
 
+@login_required
 @require_GET
 def export_html(request, report_id):
-    report = get_object_or_404(ScanReport, pk=report_id, status=ScanReport.Status.COMPLETE)
+    report = get_object_or_404(
+        _report_queryset_for(request),
+        pk=report_id,
+        status=ScanReport.Status.COMPLETE,
+    )
     html = render_to_string(
         "diagnostics/export_report.html",
         build_report_context(report),
@@ -209,9 +250,14 @@ def export_html(request, report_id):
     return response
 
 
+@login_required
 @require_GET
 def export_pdf(request, report_id):
-    report = get_object_or_404(ScanReport, pk=report_id, status=ScanReport.Status.COMPLETE)
+    report = get_object_or_404(
+        _report_queryset_for(request),
+        pk=report_id,
+        status=ScanReport.Status.COMPLETE,
+    )
     html = render_to_string(
         "diagnostics/export_report.html",
         build_report_context(report),
@@ -235,11 +281,12 @@ def export_pdf(request, report_id):
         )
 
 
+@login_required
 @require_GET
 def report_json(request, report_id):
     if not _api_key_ok(request):
         return JsonResponse({"error": "Invalid API key"}, status=403)
-    report = get_object_or_404(ScanReport, pk=report_id)
+    report = get_object_or_404(_report_queryset_for(request), pk=report_id)
     return JsonResponse(
         {
             "id": str(report.id),

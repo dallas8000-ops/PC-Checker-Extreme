@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 
@@ -12,6 +13,13 @@ class ScanReport(models.Model):
         FAILED = "failed", "Failed"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="scan_reports",
+    )
     hostname = models.CharField(max_length=255, blank=True)
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.PENDING

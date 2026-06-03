@@ -1,0 +1,43 @@
+{% extends "diagnostics/base.html" %}
+
+{% block title %}Log in — PC Checker Extreme{% endblock %}
+
+{% block content %}
+<section class="auth-shell">
+  <div class="card auth-card">
+    <header class="panel-head">
+      <span class="panel-tag">AUTH//LOGIN</span>
+      <h1>Access your private scan archive</h1>
+    </header>
+    <p class="panel-desc">Log in to run scans, compare reports, and keep your history scoped to your account.</p>
+    <form method="post" class="auth-form">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+      <ul class="auth-errors">
+        {% for error in form.non_field_errors %}
+        <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% for field in form %}
+      <div class="auth-field">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}
+        <ul class="auth-errors">
+          {% for error in field.errors %}
+          <li>{{ error }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% if next %}
+      <input type="hidden" name="next" value="{{ next }}">
+      {% endif %}
+      <button type="submit" class="btn-hud btn-hud-magenta btn-hud-lg">LOG IN</button>
+    </form>
+    <p class="auth-meta">Need an account? <a href="{% url 'diagnostics:signup' %}">Create one</a>.</p>
+  </div>
+</section>
+{% endblock %}

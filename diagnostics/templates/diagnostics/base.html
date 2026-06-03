@@ -31,7 +31,17 @@
     </div>
     <div class="hud-right">
       <button type="button" class="hud-link theme-toggle" id="theme-toggle" title="Toggle light/dark theme">THEME</button>
+      {% if request.user.is_authenticated %}
       <a href="{% url 'diagnostics:compare_scans' %}" class="hud-link">COMPARE</a>
+      <span class="hud-link">{{ request.user.username }}</span>
+      <form action="{% url 'diagnostics:logout' %}" method="post" class="inline-form">
+        {% csrf_token %}
+        <button type="submit" class="hud-link">LOG OUT</button>
+      </form>
+      {% else %}
+      <a href="{% url 'diagnostics:login' %}" class="hud-link">LOG IN</a>
+      <a href="{% url 'diagnostics:signup' %}" class="hud-link">SIGN UP</a>
+      {% endif %}
       {% block hud_actions %}
       <a href="{% url 'diagnostics:home' %}" class="hud-link">DASHBOARD</a>
       {% endblock %}

@@ -4,12 +4,26 @@
 {% block title %}Command Center — PC Checker Extreme{% endblock %}
 
 {% block hud_actions %}
+{% if request.user.is_authenticated %}
 <button type="submit" form="scan-form" class="btn-hud btn-hud-magenta" id="initiate-scan-btn" title="Start full system scan">
   INITIATE SCAN
 </button>
+{% else %}
+<a href="{% url 'diagnostics:login' %}" class="btn-hud btn-hud-magenta">LOG IN TO START</a>
+{% endif %}
 {% endblock %}
 
 {% block content %}
+{% if not request.user.is_authenticated %}
+<section class="banner-complete banner-cloud">
+  <span>
+    <strong>Private reports enabled:</strong> create an account or log in to run scans and keep your history scoped to your account.
+  </span>
+  <span>
+    <a href="{% url 'diagnostics:signup' %}" class="btn-hud btn-hud-magenta">CREATE ACCOUNT</a>
+  </span>
+</section>
+{% endif %}
 {% if is_cloud_host %}
 <section class="banner-complete banner-cloud">
   <span>
@@ -28,7 +42,7 @@
 <div class="dashboard-grid">
 
   <!-- LEFT COLUMN -->
-  <aside class="dash-col dash-left">
+  <aside class="dash-col dash-left" aria-label="System summary panels">
     <section class="panel panel-glow-cyan">
       <header class="panel-head">
         <span class="panel-tag">SYS//CORE</span>
@@ -152,6 +166,17 @@
         <p class="scan-status" id="scan-status" aria-live="polite"></p>
         <p class="panel-hint">Quick scan ~30–60 sec (hardware + health). Leave updates unchecked unless needed.</p>
       </form>
+      {% if not request.user.is_authenticated %}
+      <script>
+        document.addEventListener('DOMContentLoaded', function () {
+          var form = document.getElementById('scan-form');
+          if (form) {
+            var fields = form.querySelectorAll('input, button');
+            fields.forEach(function (field) { field.disabled = true; });
+          }
+        });
+      </script>
+      {% endif %}
     </section>
 
     <section class="panel">
@@ -166,7 +191,7 @@
   </section>
 
   <!-- RIGHT COLUMN -->
-  <aside class="dash-col dash-right">
+  <aside class="dash-col dash-right" aria-label="Recent activity and feature panels">
     <section class="panel panel-map">
       <header class="panel-head">
         <span class="panel-tag">NET//TOPOLOGY</span>
@@ -230,7 +255,7 @@
         {% endfor %}
       </ul>
       {% else %}
-      <p class="empty-log">No scans yet. Execute full scan to populate archive.</p>
+      <p class="empty-log">{% if request.user.is_authenticated %}No scans yet. Execute full scan to populate archive.{% else %}Log in to create your private scan archive.{% endif %}</p>
       {% endif %}
     </section>
 
