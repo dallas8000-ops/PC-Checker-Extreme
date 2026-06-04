@@ -25,6 +25,10 @@ services:
         value: gpt-4o-mini
       - key: PCC_API_KEY
         sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://pcchecker.gilliomfrontlinedigital.com
+      - key: CUSTOM_DOMAINS
+        value: pcchecker.gilliomfrontlinedigital.com
 
 databases:
   - name: pc-checker-db

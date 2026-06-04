@@ -79,8 +79,6 @@ def _live_telemetry():
 
 
 def landing(request):
-    if request.user.is_authenticated:
-        return redirect("diagnostics:home")
     return render(request, "diagnostics/landing.html")
 
 

@@ -17,6 +17,22 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() in ("1", "true", "yes")
 
+
+def _https_origin(host: str) -> str:
+    host = host.strip()
+    if not host:
+        return ""
+    if host.startswith("http://") or host.startswith("https://"):
+        return host.rstrip("/")
+    return f"https://{host.lstrip('.')}"
+
+
+def _append_origin(origins: list[str], value: str) -> None:
+    origin = _https_origin(value)
+    if origin and origin not in origins:
+        origins.append(origin)
+
+
 _allowed_env = os.environ.get("DJANGO_ALLOWED_HOSTS", "").strip()
 if IS_RENDER and not _allowed_env:
     # On Render, allow all hosts by default so internal/custom-domain health checks don't fail with 400.
@@ -38,11 +54,18 @@ else:
 CSRF_TRUSTED_ORIGINS = []
 _trusted = os.environ.get("CSRF_TRUSTED_ORIGINS", "")
 if _trusted:
-    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _trusted.split(",") if o.strip()]
-elif IS_RENDER:
-    render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
-    if render_url:
-        CSRF_TRUSTED_ORIGINS = [render_url.rstrip("/")]
+    for item in _trusted.split(","):
+        _append_origin(CSRF_TRUSTED_ORIGINS, item)
+
+if IS_RENDER:
+    _append_origin(CSRF_TRUSTED_ORIGINS, os.environ.get("RENDER_EXTERNAL_URL", ""))
+    for item in os.environ.get("CUSTOM_DOMAINS", "").split(","):
+        _append_origin(CSRF_TRUSTED_ORIGINS, item)
+
+for host in ALLOWED_HOSTS:
+    if host in ("*", "localhost", "127.0.0.1") or host.startswith("."):
+        continue
+    _append_origin(CSRF_TRUSTED_ORIGINS, host)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
