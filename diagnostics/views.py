@@ -15,6 +15,8 @@ from django.views.decorators.http import require_GET, require_http_methods
 from .models import ScanReport
 from .report_context import build_report_context
 from .services.driver_lookup import resolve_driver_sources
+from .services.hardware_collector import probe_motherboard_live
+from .services.scan_insights import ai_chat_reply, ai_compare_summary, compare_snapshots, summarize_compare_diff
 from .services.scan_runner import start_background_scan
 
 
@@ -82,6 +84,43 @@ def landing(request):
     return render(request, "diagnostics/landing.html")
 
 
+def _motherboard_for_dashboard(last_complete_scan):
+    """Prefer last scan snapshot; on Windows fall back to live msinfo-style probe."""
+    if last_complete_scan:
+        hw = (last_complete_scan.system_snapshot or {}).get("hardware", {})
+        board = (hw.get("system_profile") or {}).get("motherboard")
+        if board and not _board_is_empty(board):
+            return board
+        wmi = hw.get("wmi") or {}
+        board = wmi.get("motherboard_resolved")
+        if board and not _board_is_empty(board):
+            return board
+        for comp in hw.get("components_by_manufacturer", []):
+            if comp.get("category") == "Motherboard":
+                return {
+                    "manufacturer": comp.get("manufacturer"),
+                    "product": comp.get("name"),
+                    "version": (comp.get("details") or {}).get("version", ""),
+                    "serial": (comp.get("details") or {}).get("serial", ""),
+                    "source": "scan",
+                }
+
+    if sys.platform == "win32":
+        try:
+            return probe_motherboard_live()
+        except Exception:
+            pass
+    return None
+
+
+def _board_is_empty(board: dict) -> bool:
+    product = (board.get("product") or "").strip().lower()
+    if not product or product in ("motherboard", "unknown"):
+        return True
+    mfr = (board.get("manufacturer") or "").strip().lower()
+    return mfr in ("", "unknown")
+
+
 def home(request):
     is_cloud_host = os.environ.get("RENDER") == "true" or sys.platform != "win32"
     recent = list(_report_queryset_for(request)[:8])
@@ -104,6 +143,7 @@ def home(request):
             "last_complete_scan": last_complete,
             "chart_history_json": json.dumps(history_scores or [72, 78, 81, 85]),
             "is_cloud_host": is_cloud_host,
+            "motherboard": _motherboard_for_dashboard(last_complete),
         },
     )
 
@@ -129,6 +169,7 @@ def start_scan(request):
 
     include_ai = request.POST.get("include_ai", "on") == "on"
     include_slow_checks = request.POST.get("include_slow_checks") == "on"
+    include_software_inventory = request.POST.get("include_software_inventory") == "on"
     report = ScanReport.objects.create(
         owner=request.user,
         status=ScanReport.Status.SCANNING,
@@ -136,7 +177,12 @@ def start_scan(request):
         scan_progress=0,
         scan_stage="Queued…",
     )
-    start_background_scan(report.id, include_ai, include_slow_checks)
+    start_background_scan(
+        report.id,
+        include_ai,
+        include_slow_checks,
+        include_software_inventory,
+    )
     return redirect("diagnostics:scan_progress", report_id=report.id)
 
 
@@ -224,6 +270,14 @@ def compare_scans(request):
     if ma.get("score") is not None and mb.get("score") is not None:
         score_delta = ma["score"] - mb["score"]
 
+    diff = None
+    compare_summary = ""
+    ai_compare = ""
+    if scan_a and scan_b and scan_a.id != scan_b.id:
+        diff = compare_snapshots(scan_a.system_snapshot or {}, scan_b.system_snapshot or {})
+        compare_summary = summarize_compare_diff(diff, scan_a, scan_b)
+        ai_compare = ai_compare_summary(diff, scan_a.system_snapshot or {}, scan_b.system_snapshot or {})
+
     return render(
         request,
         "diagnostics/compare.html",
@@ -234,8 +288,33 @@ def compare_scans(request):
             "metrics_a": ma,
             "metrics_b": mb,
             "score_delta": score_delta,
+            "diff": diff,
+            "compare_summary": compare_summary,
+            "ai_compare_summary": ai_compare,
+            "has_openai": bool(settings.OPENAI_API_KEY),
         },
     )
+
+
+@login_required
+@require_http_methods(["POST"])
+def scan_chat(request, report_id):
+    report = get_object_or_404(
+        _report_queryset_for(request),
+        pk=report_id,
+        status=ScanReport.Status.COMPLETE,
+    )
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        body = {}
+    message = (body.get("message") or request.POST.get("message") or "").strip()
+    if not message:
+        return JsonResponse({"error": "Message required"}, status=400)
+    if len(message) > 2000:
+        return JsonResponse({"error": "Message too long"}, status=400)
+    result = ai_chat_reply(report, message)
+    return JsonResponse(result)
 
 
 @login_required

@@ -51,5 +51,41 @@
   <p class="hint">Health score change (A − B): {% if score_delta > 0 %}+{% endif %}{{ score_delta }} points{% if score_delta > 0 %} ↑{% elif score_delta < 0 %} ↓{% endif %}</p>
   {% endif %}
 </section>
+
+{% if diff and diff.changes %}
+<section class="card">
+  <h2>What changed</h2>
+  <table class="sysinfo-table">
+    <thead><tr><th>Field</th><th>Older (B)</th><th>Newer (A)</th></tr></thead>
+    <tbody>
+      {% for c in diff.changes %}
+      <tr>
+        <th scope="row">{{ c.field }}</th>
+        <td>{{ c.before }}</td>
+        <td>{{ c.after }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% if compare_summary %}
+<section class="card">
+  <h2>Summary</h2>
+  <p>{{ compare_summary|linebreaksbr }}</p>
+</section>
+{% endif %}
+
+{% if ai_compare_summary %}
+<section class="card">
+  <h2>AI comparison</h2>
+  <p>{{ ai_compare_summary|linebreaksbr }}</p>
+</section>
+{% elif has_openai == False and diff.change_count %}
+<section class="card">
+  <p class="muted">Add <code>OPENAI_API_KEY</code> for an AI-written comparison narrative.</p>
+</section>
+{% endif %}
 {% endif %}
 {% endblock %}

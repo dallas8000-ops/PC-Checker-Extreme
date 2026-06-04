@@ -1,4 +1,5 @@
 {% extends "diagnostics/base.html" %}
+{% load static %}
 
 {% block title %}Report — {{ report.hostname|default:"PC Scan" }}{% endblock %}
 {% block body_class %}page-report{% endblock %}
@@ -59,19 +60,21 @@
 {% endif %}
 
 <nav class="tab-nav" role="tablist">
-  <button type="button" class="tab active" data-tab="overview">Overview</button>
+  <button type="button" class="tab active" data-tab="systeminfo">System info</button>
+  <button type="button" class="tab" data-tab="overview">Overview</button>
   <button type="button" class="tab" data-tab="hardware">Hardware</button>
   <button type="button" class="tab" data-tab="performance">Performance</button>
   <button type="button" class="tab" data-tab="security">Security</button>
   <button type="button" class="tab" data-tab="updates">Updates</button>
+  <button type="button" class="tab" data-tab="tools">Tools</button>
   <button type="button" class="tab" data-tab="ai">AI insights</button>
 </nav>
 
-<div class="tab-panel active" id="tab-overview">
+<div class="tab-panel active" id="tab-systeminfo">
   {% if system_profile.rows %}
   <section class="card sysinfo-card">
-    <h2>System information</h2>
-    <p class="hint">Same core data as Windows System Information (msinfo32).</p>
+    <h2>Windows System Information</h2>
+    <p class="hint">Collected from WMI/CIM — the same sources as <strong>msinfo32</strong> (System Summary). Not scraped from Control Panel applets.</p>
     <table class="sysinfo-table">
       <tbody>
         {% for row in system_profile.rows %}
@@ -83,8 +86,12 @@
       </tbody>
     </table>
   </section>
+  {% else %}
+  <p class="muted">No system profile in this scan. Run a new scan on Windows (WMI unavailable on cloud hosts).</p>
   {% endif %}
+</div>
 
+<div class="tab-panel" id="tab-overview">
   <section class="card">
     <h2>Health checks</h2>
     <ul class="check-list">
@@ -330,10 +337,14 @@
   <section class="card">
     <h2>Startup programs ({{ startup.count }})</h2>
     <table class="component-table">
-      <thead><tr><th>Name</th><th>Location</th></tr></thead>
+      <thead><tr><th>Name</th><th>Impact</th><th>Location</th></tr></thead>
       <tbody>
         {% for p in startup.programs %}
-        <tr><td>{{ p.Name }}</td><td class="muted">{{ p.Location }}</td></tr>
+        <tr>
+          <td>{{ p.Name }}</td>
+          <td><span class="urgency-tag urgency-{{ p.impact }}">{{ p.impact }}</span></td>
+          <td class="muted">{{ p.Location }}</td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
@@ -342,9 +353,12 @@
   {% if duplicate_drivers %}
   <section class="card">
     <h2>Possible duplicate drivers</h2>
-    <ul>
+    <ul class="dup-driver-list">
       {% for d in duplicate_drivers %}
-      <li>{{ d.device }} ↔ {{ d.conflicts_with }}</li>
+      <li>
+        <strong>{{ d.device }}</strong> ↔ {{ d.conflicts_with }}
+        <p class="muted">{{ d.advice }}</p>
+      </li>
       {% endfor %}
     </ul>
   </section>
@@ -410,6 +424,148 @@
   {% endif %}
 </div>
 
+<div class="tab-panel" id="tab-tools">
+  {% if bottleneck.primary_bottleneck %}
+  <section class="card">
+    <h2>Bottleneck analysis</h2>
+    <p><strong>Primary:</strong> {{ bottleneck.primary_bottleneck|upper }} — {{ bottleneck.summary }}</p>
+    <p class="muted">Workload guess: {{ bottleneck.workload_guess }}</p>
+    <div class="metrics">
+      {% for k, v in bottleneck.scores.items %}
+      <div class="metric">
+        <span class="metric-label">{{ k|upper }} headroom</span>
+        <span class="metric-value">{{ v }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% for note in bottleneck.use_case_notes %}
+    <p class="hint">{{ note }}</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if command_playbook %}
+  <section class="card">
+    <h2>Command playbook</h2>
+    <p class="hint">Copy and run in PowerShell or CMD. Review before executing — admin commands marked.</p>
+    <div class="playbook-list">
+      {% for cmd in command_playbook %}
+      <article class="playbook-card">
+        <header>
+          <strong>{{ cmd.title }}</strong>
+          {% if cmd.admin %}<span class="pill pill-magenta">ADMIN</span>{% endif %}
+          <span class="muted">{{ cmd.category }}</span>
+        </header>
+        <p class="muted">{{ cmd.description }}</p>
+        <textarea class="playbook-cmd" readonly rows="2">{{ cmd.command }}</textarea>
+        <button type="button" class="btn-hud btn-copy-cmd">Copy</button>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if driver_gaps %}
+  <section class="card">
+    <h2>Driver gap report</h2>
+    <table class="component-table">
+      <thead><tr><th>Device</th><th>Class</th><th>Links</th><th>Note</th></tr></thead>
+      <tbody>
+        {% for g in driver_gaps %}
+        <tr>
+          <td>{{ g.device }}</td>
+          <td>{{ g.class }}</td>
+          <td>
+            {% if g.driver_url %}<a href="{{ g.driver_url }}" target="_blank" rel="noopener" class="detail-chip link-chip">Drivers ↗</a>{% endif %}
+            {% if g.support_url %}<a href="{{ g.support_url }}" target="_blank" rel="noopener" class="detail-chip link-chip">Support ↗</a>{% endif %}
+          </td>
+          <td class="muted">{{ g.note }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if catalog_links %}
+  <section class="card">
+    <h2>Microsoft Update Catalog</h2>
+    <ul>
+      {% for link in catalog_links %}
+      <li>
+        {{ link.label }} —
+        <a href="{{ link.catalog_url }}" target="_blank" rel="noopener">Catalog search ↗</a>
+        · <a href="{{ link.learn_url }}" target="_blank" rel="noopener">Learn ↗</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if battery.available %}
+  <section class="card">
+    <h2>Battery</h2>
+    <p>Charge: {{ battery.estimatedChargeRemaining }}% · Status: {{ battery.status }}</p>
+    {% if battery.report_path %}
+    <p class="hint">Battery report generated: <code>{{ battery.report_path }}</code> (open in browser)</p>
+    {% endif %}
+  </section>
+  {% elif battery.note %}
+  <section class="card"><p class="muted">{{ battery.note }}</p></section>
+  {% endif %}
+
+  {% if event_log.events %}
+  <section class="card">
+    <h2>Event log (last {{ event_log.days }} days)</h2>
+    <p class="hint">Critical/Error/Warning: {{ event_log.summary.Critical }} / {{ event_log.summary.Error }} / {{ event_log.summary.Warning }} (in sample)</p>
+    <table class="component-table event-log-table">
+      <thead><tr><th>Time</th><th>Level</th><th>Source</th><th>Message</th></tr></thead>
+      <tbody>
+        {% for e in event_log.events %}
+        <tr>
+          <td class="muted">{{ e.TimeCreated|truncatechars:19 }}</td>
+          <td>{{ e.Level }}</td>
+          <td>{{ e.Provider }}</td>
+          <td>{{ e.Message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if reliability.records %}
+  <section class="card">
+    <h2>Reliability Monitor</h2>
+    <p class="hint">{{ reliability.note }} Failures in sample: {{ reliability.failure_count }}</p>
+    <table class="component-table">
+      <thead><tr><th>Time</th><th>Source</th><th>Product</th><th>Message</th></tr></thead>
+      <tbody>
+        {% for r in reliability.records %}
+        <tr>
+          <td class="muted">{{ r.TimeGenerated|truncatechars:22 }}</td>
+          <td>{{ r.SourceName }}</td>
+          <td>{{ r.ProductName }}</td>
+          <td>{{ r.Message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  <section class="card scan-chat-card">
+    <h2>Ask about this scan</h2>
+    <p class="hint">{% if has_openai %}AI answers using this report’s snapshot only.{% else %}Set OPENAI_API_KEY to enable chat.{% endif %}</p>
+    <div id="scan-chat-log" class="scan-chat-log" aria-live="polite"></div>
+    <form id="scan-chat-form" class="scan-chat-form" data-chat-url="{% url 'diagnostics:scan_chat' report_id=report.id %}">
+      {% csrf_token %}
+      <input type="text" name="message" id="scan-chat-input" placeholder="e.g. Why is my disk score low?" maxlength="2000" {% if not has_openai %}disabled{% endif %}>
+      <button type="submit" class="btn-hud btn-hud-magenta" {% if not has_openai %}disabled{% endif %}>Send</button>
+    </form>
+  </section>
+</div>
+
 <div class="tab-panel" id="tab-ai">
   {% if ai.interactive_sections %}
   <section class="interactive-sections">
@@ -468,4 +624,8 @@
   </section>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'diagnostics/js/report-tools.js' %}"></script>
 {% endblock %}

@@ -158,19 +158,26 @@ def analyze_system(snapshot: dict) -> dict:
     compact = {
         "hostname": snapshot.get("hostname"),
         "hardware_components": snapshot.get("hardware", {}).get("components_by_manufacturer"),
+        "system_profile": snapshot.get("hardware", {}).get("system_profile", {}).get("rows", [])[:25],
         "live_metrics": snapshot.get("hardware", {}).get("live_metrics"),
         "health_checks": health.get("checks"),
         "health_score": health.get("health_score"),
+        "bottleneck": snapshot.get("bottleneck"),
         "outdated_apps": snapshot.get("software", {}).get("outdated_winget", {}).get("packages", [])[:30],
         "windows_updates_count": snapshot.get("software", {}).get("windows_updates", {}).get("count", 0),
         "installed_programs_sample": snapshot.get("software", {}).get("installed", {}).get("programs", [])[:25],
         "smart": snapshot.get("hardware", {}).get("smart"),
         "benchmark": snapshot.get("benchmark"),
         "security": snapshot.get("security"),
+        "event_log_summary": snapshot.get("event_log", {}).get("summary"),
+        "reliability_failures": snapshot.get("reliability", {}).get("failure_count"),
+        "duplicate_drivers": snapshot.get("duplicate_drivers", [])[:10],
+        "command_playbook_titles": [c.get("title") for c in snapshot.get("command_playbook", [])[:8]],
     }
 
     prompt = f"""You are an expert PC technician. Analyze this system diagnostic snapshot.
 Identify each component by manufacturer where possible. Flag bottlenecks, security risks, and outdated software.
+Reference event_log_summary and reliability_failures when relevant. Suggest commands from command_playbook_titles when helpful.
 Be specific and practical. {ANALYSIS_SCHEMA_HINT}
 
 System snapshot:

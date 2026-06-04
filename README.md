@@ -4,12 +4,20 @@ AI-powered PC diagnostics built with **Django**. Scans Windows hardware by manuf
 
 ## Features
 
-- **Hardware identification** — CPU, GPU, RAM, storage, motherboard, network (manufacturer + model via WMI)
+- **Windows System Information** — CPU, GPU, RAM, storage, motherboard, BIOS (WMI/CIM — same sources as msinfo32)
+- **Hardware identification** — manufacturer + model via WMI (not Control Panel scraping)
 - **Health checks** — Memory, disk space, pending updates, uptime
 - **Software inventory** — Installed programs from registry
 - **Outdated apps** — `winget upgrade` parsing for available updates
 - **Windows updates** — Pending update count via Windows Update API
 - **AI analysis** — OpenAI-powered component reviews, priority actions, upgrade suggestions, expandable interactive sections
+- **Tools tab** — Command playbook (SFC, DISM, winget, disk cleanup), bottleneck analysis, driver gap report, Update Catalog links
+- **Event log digest** — Recent Critical/Error/Warning from System & Application logs
+- **Reliability Monitor** — Recent stability records (Win32_ReliabilityRecords)
+- **Battery report** — Laptop battery status + `powercfg /batteryreport` path when applicable
+- **Startup impact** — High/medium/low ranking for startup entries
+- **Compare scans** — Side-by-side diff + optional AI summary
+- **Scan chat** — Ask questions about a completed report (OpenAI + snapshot context)
 - **Scan history** — SQLite-backed reports you can revisit
 
 ## Deploy on Render

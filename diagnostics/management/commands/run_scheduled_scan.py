@@ -18,6 +18,11 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--no-ai", action="store_true")
         parser.add_argument("--updates", action="store_true", help="Include winget/update checks")
+        parser.add_argument(
+            "--programs",
+            action="store_true",
+            help="Include installed programs list (registry; not msinfo32)",
+        )
 
     def handle(self, *args, **options):
         report = ScanReport.objects.create(
@@ -28,6 +33,7 @@ class Command(BaseCommand):
             result = run_full_scan(
                 include_ai=not options["no_ai"],
                 include_slow_checks=options["updates"],
+                include_software_inventory=options["programs"],
             )
             report.hostname = result["snapshot"].get("hostname") or socket.gethostname()
             report.system_snapshot = result["snapshot"]

@@ -175,12 +175,27 @@ def collect_windows_updates_status() -> dict:
         return {"available": False, "count": 0, "updates": []}
 
 
-def collect_software(*, include_slow_checks: bool = False) -> dict:
+def collect_software(
+    *,
+    include_inventory: bool = False,
+    include_slow_checks: bool = False,
+) -> dict:
     """
+    include_inventory: Control Panel / uninstall-registry program list (not msinfo32).
     include_slow_checks: winget + Windows Update COM (can take 1–2+ minutes).
-    Default False for fast scans (~15–45 seconds with hardware).
+    Default: system-info-focused scan — no program list unless opted in.
     """
-    result = {"installed": collect_installed_programs()}
+    if include_inventory:
+        result = {"installed": collect_installed_programs()}
+    else:
+        result = {
+            "installed": {
+                "programs": [],
+                "count": 0,
+                "skipped": True,
+                "note": "Program list skipped — scan used Windows System Information (WMI) only.",
+            }
+        }
     if include_slow_checks:
         result["outdated_winget"] = collect_outdated_via_winget()
         result["windows_updates"] = collect_windows_updates_status()

@@ -57,6 +57,42 @@
       </div>
     </section>
 
+    <section class="panel panel-glow-violet">
+      <header class="panel-head">
+        <span class="panel-tag">HW//BASEBOARD</span>
+        <h2>Motherboard</h2>
+      </header>
+      {% if motherboard %}
+      <dl class="board-specs">
+        <div class="board-spec-row">
+          <dt>BaseBoard Manufacturer</dt>
+          <dd>{{ motherboard.manufacturer }}</dd>
+        </div>
+        <div class="board-spec-row">
+          <dt>BaseBoard Product</dt>
+          <dd>{{ motherboard.product }}</dd>
+        </div>
+        {% if motherboard.version %}
+        <div class="board-spec-row">
+          <dt>BaseBoard Version</dt>
+          <dd>{{ motherboard.version }}</dd>
+        </div>
+        {% endif %}
+        {% if motherboard.serial %}
+        <div class="board-spec-row">
+          <dt>Serial</dt>
+          <dd class="mono">{{ motherboard.serial }}</dd>
+        </div>
+        {% endif %}
+      </dl>
+      <p class="panel-hint">Same fields as Windows System Information (msinfo32).</p>
+      {% elif is_cloud_host %}
+      <p class="panel-desc">Motherboard detection requires a scan on your Windows PC (WMI is not available on this cloud host).</p>
+      {% else %}
+      <p class="panel-desc">Run a full scan to read baseboard data from WMI and the system registry.</p>
+      {% endif %}
+    </section>
+
     <section class="panel">
       <header class="panel-head">
         <span class="panel-tag">LIVE//TELEMETRY</span>
@@ -145,7 +181,8 @@
         <h2>Full system diagnostic</h2>
       </header>
       <p class="panel-desc">
-        Deep WMI hardware ID by manufacturer · winget update sweep · Windows Update status · AI review
+        Primary source: <strong>Windows System Information</strong> (same WMI data as msinfo32) — CPU, board, BIOS, RAM, disks, drivers.
+        Optional extras below are not Control Panel settings.
       </p>
       <form id="scan-form" class="scan-form" action="{% url 'diagnostics:start_scan' %}" method="post">
         {% csrf_token %}
@@ -153,6 +190,11 @@
           <input type="checkbox" name="include_ai" checked>
           <span class="toggle-track"></span>
           <span>Neural analysis (OpenAI){% if not has_openai %} — add <code>OPENAI_API_KEY</code>{% endif %}</span>
+        </label>
+        <label class="toggle-ai">
+          <input type="checkbox" name="include_software_inventory">
+          <span class="toggle-track"></span>
+          <span>Include installed programs list (registry / Add or Remove Programs — optional)</span>
         </label>
         <label class="toggle-ai">
           <input type="checkbox" name="include_slow_checks">
@@ -164,7 +206,7 @@
           <span class="btn-spinner hidden"></span>
         </button>
         <p class="scan-status" id="scan-status" aria-live="polite"></p>
-        <p class="panel-hint">Quick scan ~30–60 sec (hardware + health). Leave updates unchecked unless needed.</p>
+        <p class="panel-hint">Default scan ~30–60 sec: System Information + health only. Check extras only if you need program/update lists.</p>
       </form>
       {% if not request.user.is_authenticated %}
       <script>
@@ -260,7 +302,9 @@
     </section>
 
     <section class="panel feature-stack">
-      <div class="mini-feature"><span class="mf-icon">◈</span> Hardware by manufacturer</div>
+      <div class="mini-feature"><span class="mf-icon">◈</span> System Information (msinfo32)</div>
+      <div class="mini-feature"><span class="mf-icon">◈</span> Command playbook · Event log · Bottleneck</div>
+      <div class="mini-feature"><span class="mf-icon">◈</span> Compare scans · AI chat on report</div>
       <div class="mini-feature"><span class="mf-icon">◈</span> Outdated app detection</div>
       <div class="mini-feature"><span class="mf-icon">◈</span> AI priority actions</div>
     </section>

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 import psutil
 
+from .oem_detection import infer_motherboard_brand, is_msi_motherboard, normalize_board_brand
 from .powershell import run_powershell, run_powershell_stdout
 
 # Device classes to include in driver report (Win32_PnPSignedDriver)
@@ -101,30 +102,27 @@ def _is_placeholder(value) -> bool:
 
 
 def _normalize_board_brand(name: str) -> str:
-    if not name:
-        return ""
-    text = str(name).strip()
-    lower = text.lower()
-    if "micro-star" in lower or lower == "msi" or "micro star" in lower:
-        return "MSI"
-    if "asustek" in lower or lower.startswith("asus"):
-        return "ASUS"
-    if "gigabyte" in lower:
-        return "Gigabyte"
-    if "asrock" in lower:
-        return "ASRock"
-    return text
+    return normalize_board_brand(name)
 
 
 def _collect_motherboard_registry() -> dict:
     script = r"""
     $path = 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS'
     $p = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue
+    $ci = $null
+    try { $ci = Get-ComputerInfo -Property CsManufacturer, CsModel, BiosManufacturer, BiosVersion -ErrorAction SilentlyContinue } catch {}
     $secureBoot = 'Unknown'
     try { $secureBoot = if (Confirm-SecureBootUEFI) { 'On' } else { 'Off' } } catch {}
     $tz = (Get-TimeZone).DisplayName
     if (-not $p) {
-      @{ SecureBootState = $secureBoot; TimeZone = $tz } | ConvertTo-Json -Compress
+      @{
+        SecureBootState = $secureBoot
+        TimeZone = $tz
+        CsManufacturer = $ci.CsManufacturer
+        CsModel = $ci.CsModel
+        BiosManufacturer = $ci.BiosManufacturer
+        BiosVersion = $ci.BiosVersion
+      } | ConvertTo-Json -Compress
       exit
     }
     @{
@@ -138,6 +136,10 @@ def _collect_motherboard_registry() -> dict:
       BIOSVersion = $p.BIOSVersion
       SecureBootState = $secureBoot
       TimeZone = $tz
+      CsManufacturer = $ci.CsManufacturer
+      CsModel = $ci.CsModel
+      BiosManufacturer = $ci.BiosManufacturer
+      BiosVersion = $ci.BiosVersion
     } | ConvertTo-Json -Compress
     """
     raw = run_powershell_stdout(script, timeout=30)
@@ -162,16 +164,19 @@ def _resolve_motherboard(wmi: dict) -> dict:
         reg.get("BaseBoardManufacturer"),
         wmi_board.get("Manufacturer"),
         reg.get("SystemManufacturer"),
+        reg.get("CsManufacturer"),
         system.get("Manufacturer"),
         bios.get("Manufacturer"),
+        reg.get("BiosManufacturer"),
         sys_product.get("Vendor"),
     ]
     candidates_product = [
         reg.get("BaseBoardProduct"),
         wmi_board.get("Product"),
+        sys_product.get("Name"),
         reg.get("SystemProductName"),
         system.get("Model"),
-        sys_product.get("Name"),
+        reg.get("CsModel"),
     ]
     candidates_version = [
         reg.get("BaseBoardVersion"),
@@ -209,6 +214,14 @@ def _resolve_motherboard(wmi: dict) -> dict:
     serial = _as_text(reg.get("BaseBoardSerial") or wmi_board.get("SerialNumber"))
     if _is_placeholder(serial):
         serial = ""
+
+    generic_mfr = manufacturer.lower() in ("", "unknown", "default string", "oem", "standard")
+    if generic_mfr or not manufacturer:
+        inferred = infer_motherboard_brand(manufacturer, product)
+        if inferred:
+            manufacturer = inferred
+    elif is_msi_motherboard(manufacturer, product) and manufacturer != "MSI":
+        manufacturer = "MSI"
 
     return {
         "manufacturer": manufacturer or "Unknown",
@@ -773,6 +786,9 @@ def _build_system_profile(wmi: dict, live_metrics: dict, platform_info: dict) ->
 
     mem = live_metrics.get("memory", {})
     rows = [
+        ("BaseBoard Manufacturer", board.get("manufacturer")),
+        ("BaseBoard Product", board.get("product")),
+        ("BaseBoard Version", board.get("version") or reg.get("BaseBoardVersion")),
         ("OS Name", os0.get("Caption") or f"Microsoft Windows {platform_info.get('release', '')}"),
         ("Version", version_line),
         ("OS Manufacturer", "Microsoft Corporation"),
@@ -784,18 +800,23 @@ def _build_system_profile(wmi: dict, live_metrics: dict, platform_info: dict) ->
         ),
         (
             "System Model",
-            system.get("Model")
-            if not _is_placeholder(system.get("Model"))
-            else (reg.get("SystemProductName") if not _is_placeholder(reg.get("SystemProductName")) else board.get("product")),
+            board.get("product")
+            if board.get("product") and not _is_placeholder(board.get("product"))
+            else (
+                system.get("Model")
+                if not _is_placeholder(system.get("Model"))
+                else (
+                    reg.get("SystemProductName")
+                    if not _is_placeholder(reg.get("SystemProductName"))
+                    else board.get("product")
+                )
+            ),
         ),
         ("System Type", os0.get("OSArchitecture") or system.get("SystemType")),
         ("System SKU", sys_product.get("IdentifyingNumber") or sys_product.get("Version")),
         ("Processor", processor_line.strip(", ") if processor_line else None),
         ("BIOS Version/Date", _format_bios_version_date(bios, reg)),
         ("SMBIOS Version", smbios or None),
-        ("BaseBoard Manufacturer", board.get("manufacturer")),
-        ("BaseBoard Product", board.get("product")),
-        ("BaseBoard Version", board.get("version") or reg.get("BaseBoardVersion")),
         ("Platform Role", "Desktop" if str(system.get("PCSystemType")) in ("1", "Desktop") else system.get("PCSystemType")),
         ("Secure Boot State", reg.get("SecureBootState")),
         ("Windows Directory", os0.get("WindowsDirectory")),
@@ -810,6 +831,38 @@ def _build_system_profile(wmi: dict, live_metrics: dict, platform_info: dict) ->
         "rows": [{"label": label, "value": value} for label, value in rows if value],
         "motherboard": board,
     }
+
+
+def probe_motherboard_live() -> dict:
+    """Fast baseboard read for dashboard (registry + Win32_BaseBoard, same sources as msinfo32)."""
+    if sys.platform != "win32":
+        return {
+            "manufacturer": "Unknown",
+            "product": "Motherboard",
+            "version": "",
+            "serial": "",
+            "source": "unavailable",
+        }
+    mini = {
+        "motherboard": _wmi_json(
+            "Win32_BaseBoard",
+            ["Manufacturer", "Product", "Version", "SerialNumber"],
+            timeout=25,
+        ),
+        "motherboard_registry": _collect_motherboard_registry(),
+        "bios": _wmi_json(
+            "Win32_BIOS",
+            ["Manufacturer", "SMBIOSBIOSVersion", "BIOSVersion"],
+            timeout=20,
+        ),
+        "system": _wmi_json("Win32_ComputerSystem", ["Manufacturer", "Model"], timeout=20),
+        "system_product": _wmi_json(
+            "Win32_ComputerSystemProduct",
+            ["Vendor", "Name", "Version"],
+            timeout=20,
+        ),
+    }
+    return _resolve_motherboard(mini)
 
 
 def collect_hardware() -> dict:

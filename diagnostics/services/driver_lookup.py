@@ -2,6 +2,7 @@ import re
 from urllib.parse import quote_plus
 
 from diagnostics.models import DriverSource
+from diagnostics.services.oem_detection import query_text_matches_msi
 
 
 DEFAULT_SOURCES = [
@@ -36,7 +37,7 @@ DEFAULT_SOURCES = [
         "key": "asus",
         "vendor_name": "ASUS",
         "source_type": "oem",
-        "match_terms": ["asus", "asustek", "rog", "tuf"],
+        "match_terms": ["asus", "asustek", "rog", "tuf", "maximus", "strix", "prime"],
         "support_url": "https://www.asus.com/support/",
         "driver_url": "https://www.asus.com/support/download-center/",
         "troubleshooting_url": "https://www.asus.com/support/faq/",
@@ -54,7 +55,20 @@ DEFAULT_SOURCES = [
         "key": "msi",
         "vendor_name": "MSI",
         "source_type": "oem",
-        "match_terms": ["msi", "micro-star", "micro star"],
+        "match_terms": [
+            "msi",
+            "micro-star",
+            "microstar",
+            "mag",
+            "mpg",
+            "meg",
+            "tomahawk",
+            "mortar",
+            "carbon",
+            "unify",
+            "godlike",
+            "bazooka",
+        ],
         "support_url": "https://www.msi.com/support",
         "driver_url": "https://www.msi.com/support/download",
         "troubleshooting_url": "https://www.msi.com/faq",
@@ -142,9 +156,33 @@ def _from_db(query_tokens: set[str], segment: str = "general") -> list[dict]:
     return matches
 
 
-def _from_defaults(query_tokens: set[str]) -> list[dict]:
+def _msi_default_match() -> dict | None:
+    source = next((s for s in DEFAULT_SOURCES if s["key"] == "msi"), None)
+    if not source:
+        return None
+    return {
+        "key": source["key"],
+        "vendor_name": source["vendor_name"],
+        "customer_segment": "general",
+        "source_type": source["source_type"],
+        "support_url": source["support_url"],
+        "driver_url": source["driver_url"],
+        "troubleshooting_url": source["troubleshooting_url"],
+        "confidence": "high",
+        "source": "default",
+    }
+
+
+def _from_defaults(query_tokens: set[str], query_text: str = "") -> list[dict]:
     matches = []
+    if query_text and query_text_matches_msi(query_text):
+        msi = _msi_default_match()
+        if msi:
+            matches.append(msi)
+
     for source in DEFAULT_SOURCES:
+        if source["key"] == "msi" and any(m["key"] == "msi" for m in matches):
+            continue
         terms = set(source["match_terms"])
         if terms & query_tokens:
             matches.append(
@@ -175,7 +213,7 @@ def resolve_driver_sources(
     query_tokens = _tokenize(query_text)
 
     custom_matches = _from_db(query_tokens, segment=segment)
-    default_matches = _from_defaults(query_tokens)
+    default_matches = _from_defaults(query_tokens, query_text)
 
     merged = []
     seen = set()

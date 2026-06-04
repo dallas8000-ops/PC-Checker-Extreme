@@ -18,6 +18,7 @@ urlpatterns = [
     path("scan/<uuid:report_id>/export/html/", views.export_html, name="export_html"),
     path("scan/<uuid:report_id>/export/pdf/", views.export_pdf, name="export_pdf"),
     path("compare/", views.compare_scans, name="compare_scans"),
+    path("scan/<uuid:report_id>/chat/", views.scan_chat, name="scan_chat"),
     path("api/scan/<uuid:report_id>/", views.report_json, name="report_json"),
     path("api/driver-lookup/", views.driver_lookup, name="driver_lookup"),
     path("api/health/", views.api_health, name="api_health"),

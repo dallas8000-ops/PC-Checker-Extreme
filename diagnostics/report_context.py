@@ -1,5 +1,7 @@
 """Build template context for report and export views."""
 
+from django.conf import settings
+
 from diagnostics.services.driver_lookup import resolve_driver_sources
 
 
@@ -8,9 +10,22 @@ def _detect_manufacturer_queries(snapshot: dict) -> list[dict]:
     components = hardware.get("components_by_manufacturer", [])
     queries = []
 
+    board = (hardware.get("system_profile") or {}).get("motherboard") or {}
+    if board.get("manufacturer"):
+        queries.append(
+            {
+                "vendor": board.get("manufacturer", "").strip(),
+                "model": board.get("product", "").strip(),
+                "component": "Motherboard",
+                "hardware_id": "",
+            }
+        )
+
     for comp in components:
         vendor = (comp.get("manufacturer") or "").strip()
         if not vendor:
+            continue
+        if comp.get("category") == "Motherboard" and board.get("product"):
             continue
         queries.append(
             {
@@ -131,4 +146,12 @@ def build_report_context(report) -> dict:
         "installed_programs": software.get("installed", {}).get("programs", []),
         "live_metrics": hardware.get("live_metrics", {}),
         "driver_support_sources": _build_driver_support_sources(snapshot, segment="general"),
+        "event_log": snapshot.get("event_log", {}),
+        "reliability": snapshot.get("reliability", {}),
+        "battery": snapshot.get("battery", {}),
+        "bottleneck": snapshot.get("bottleneck", {}),
+        "command_playbook": snapshot.get("command_playbook", []),
+        "driver_gaps": snapshot.get("driver_gaps", []),
+        "catalog_links": snapshot.get("catalog_links", []),
+        "has_openai": bool(settings.OPENAI_API_KEY),
     }

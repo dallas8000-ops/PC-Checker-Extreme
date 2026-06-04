@@ -23,7 +23,12 @@ def _progress_callback(report_id):
     return callback
 
 
-def _run_scan_job(report_id, include_ai: bool, include_slow_checks: bool):
+def _run_scan_job(
+    report_id,
+    include_ai: bool,
+    include_slow_checks: bool,
+    include_software_inventory: bool,
+):
     connection.close()
     report = ScanReport.objects.get(pk=report_id)
     try:
@@ -31,6 +36,7 @@ def _run_scan_job(report_id, include_ai: bool, include_slow_checks: bool):
         result = run_full_scan(
             include_ai=include_ai,
             include_slow_checks=include_slow_checks,
+            include_software_inventory=include_software_inventory,
             progress_callback=_progress_callback(report_id),
         )
         snapshot = result["snapshot"]
@@ -62,10 +68,15 @@ def _run_scan_job(report_id, include_ai: bool, include_slow_checks: bool):
         connection.close()
 
 
-def start_background_scan(report_id, include_ai: bool, include_slow_checks: bool):
+def start_background_scan(
+    report_id,
+    include_ai: bool,
+    include_slow_checks: bool,
+    include_software_inventory: bool = False,
+):
     thread = threading.Thread(
         target=_run_scan_job,
-        args=(report_id, include_ai, include_slow_checks),
+        args=(report_id, include_ai, include_slow_checks, include_software_inventory),
         daemon=True,
     )
     thread.start()
