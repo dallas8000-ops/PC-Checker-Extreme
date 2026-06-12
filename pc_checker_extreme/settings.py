@@ -9,13 +9,15 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 IS_RENDER = os.environ.get("RENDER", "").lower() in ("1", "true", "yes")
+IS_RAILWAY = bool(os.environ.get("RAILWAY_ENVIRONMENT"))
+IS_PRODUCTION = IS_RENDER or IS_RAILWAY
 
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
     "django-insecure-dev-only-change-in-production",
 )
 
-DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() in ("1", "true", "yes")
+DEBUG = os.environ.get("DJANGO_DEBUG", "false" if IS_PRODUCTION else "true").lower() in ("1", "true", "yes")
 
 
 def _https_origin(host: str) -> str:
@@ -34,8 +36,7 @@ def _append_origin(origins: list[str], value: str) -> None:
 
 
 _allowed_env = os.environ.get("DJANGO_ALLOWED_HOSTS", "").strip()
-if IS_RENDER and not _allowed_env:
-    # On Render, allow all hosts by default so internal/custom-domain health checks don't fail with 400.
+if IS_PRODUCTION and not _allowed_env:
     ALLOWED_HOSTS = ["*"]
 else:
     _allowed = (_allowed_env or "127.0.0.1,localhost").split(",")
@@ -49,6 +50,11 @@ else:
             parsed = urlparse(render_url)
             if parsed.hostname:
                 _allowed.append(parsed.hostname)
+    if IS_RAILWAY:
+        _allowed.append(".railway.app")
+        railway_host = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+        if railway_host:
+            _allowed.append(railway_host)
     ALLOWED_HOSTS = [h.strip() for h in _allowed if h.strip()]
 
 CSRF_TRUSTED_ORIGINS = []
@@ -61,6 +67,11 @@ if IS_RENDER:
     _append_origin(CSRF_TRUSTED_ORIGINS, os.environ.get("RENDER_EXTERNAL_URL", ""))
     for item in os.environ.get("CUSTOM_DOMAINS", "").split(","):
         _append_origin(CSRF_TRUSTED_ORIGINS, item)
+
+if IS_RAILWAY:
+    railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+    if railway_domain:
+        _append_origin(CSRF_TRUSTED_ORIGINS, railway_domain)
 
 for host in ALLOWED_HOSTS:
     if host in ("*", "localhost", "127.0.0.1") or host.startswith("."):

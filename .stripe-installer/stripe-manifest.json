@@ -1,0 +1,32 @@
+{
+  "createdAt": "2026-06-12T06:22:55.992941+00:00",
+  "updatedAt": "2026-06-12T06:24:14.577337+00:00",
+  "accountId": "acct_1TVQpaRxznXvj6jh",
+  "products": [
+    {
+      "id": "prod_Ugm2BkF503rTbB",
+      "name": "`OPENAI_MODEL`"
+    }
+  ],
+  "prices": [
+    {
+      "id": "price_1ThOUURxznXvj6jhTC3mbWmk",
+      "tier": "`OPENAI_MODEL`",
+      "amount": 400,
+      "currency": "usd",
+      "interval": "month",
+      "trialDays": 0,
+      "features": null
+    }
+  ],
+  "webhookEndpoint": {
+    "id": "we_1ThOVmRxznXvj6jhOtvVf6KR",
+    "url": "https://pc-checker-extreme-production.up.railway.app/stripe/webhook",
+    "reused": false
+  },
+  "billingPortalConfig": {
+    "id": "bpc_1ThOUVRxznXvj6jhINJLIJOQ",
+    "reused": true
+  },
+  "appUrl": "https://pc-checker-extreme-production.up.railway.app"
+}
