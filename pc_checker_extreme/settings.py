@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -9,15 +10,35 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 IS_RENDER = os.environ.get("RENDER", "").lower() in ("1", "true", "yes")
-IS_RAILWAY = bool(os.environ.get("RAILWAY_ENVIRONMENT"))
-IS_PRODUCTION = IS_RENDER or IS_RAILWAY
-
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-dev-only-change-in-production",
+IS_RAILWAY = bool(
+    os.environ.get("RAILWAY_ENVIRONMENT")
+    or os.environ.get("RAILWAY_PROJECT_ID")
+    or os.environ.get("RAILWAY_PUBLIC_DOMAIN")
 )
+IS_HOSTED = IS_RENDER or IS_RAILWAY
 
-DEBUG = os.environ.get("DJANGO_DEBUG", "false" if IS_PRODUCTION else "true").lower() in ("1", "true", "yes")
+
+def _django_build_command_running():
+    if len(sys.argv) < 2:
+        return False
+    return sys.argv[1] in {"collectstatic", "migrate", "check"}
+
+
+_django_secret = os.environ.get("DJANGO_SECRET_KEY", "").strip() or os.environ.get("SECRET_KEY", "").strip()
+if _django_secret:
+    SECRET_KEY = _django_secret
+elif not IS_HOSTED or _django_build_command_running():
+    SECRET_KEY = "django-insecure-dev-only-change-in-production"
+else:
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured("Set DJANGO_SECRET_KEY when DJANGO_DEBUG=false (production).")
+
+DEBUG = os.environ.get("DJANGO_DEBUG", "false" if IS_HOSTED else "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 def _https_origin(host: str) -> str:
@@ -35,8 +56,9 @@ def _append_origin(origins: list[str], value: str) -> None:
         origins.append(origin)
 
 
-_allowed_env = os.environ.get("DJANGO_ALLOWED_HOSTS", "").strip()
-if IS_PRODUCTION and not _allowed_env:
+_allowed_env = os.environ.get("DJANGO_ALLOWED_HOSTS", "").strip() or os.environ.get("ALLOWED_HOSTS", "").strip()
+if IS_HOSTED and not _allowed_env:
+    # Hosted: allow all hosts so internal/custom-domain health checks don't fail with 400.
     ALLOWED_HOSTS = ["*"]
 else:
     _allowed = (_allowed_env or "127.0.0.1,localhost").split(",")
@@ -51,10 +73,12 @@ else:
             if parsed.hostname:
                 _allowed.append(parsed.hostname)
     if IS_RAILWAY:
-        _allowed.append(".railway.app")
-        railway_host = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
-        if railway_host:
-            _allowed.append(railway_host)
+        for host in (".railway.app", ".up.railway.app", "healthcheck.railway.app"):
+            if host not in _allowed:
+                _allowed.append(host)
+        railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
+        if railway_domain and railway_domain not in _allowed:
+            _allowed.append(railway_domain)
     ALLOWED_HOSTS = [h.strip() for h in _allowed if h.strip()]
 
 CSRF_TRUSTED_ORIGINS = []
@@ -69,7 +93,7 @@ if IS_RENDER:
         _append_origin(CSRF_TRUSTED_ORIGINS, item)
 
 if IS_RAILWAY:
-    railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+    railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
     if railway_domain:
         _append_origin(CSRF_TRUSTED_ORIGINS, railway_domain)
 
@@ -121,13 +145,23 @@ WSGI_APPLICATION = "pc_checker_extreme.wsgi.application"
 if os.environ.get("DATABASE_URL"):
     import dj_database_url
 
-    DATABASES = {
-        "default": dj_database_url.config(
-            conn_max_age=600,
-            conn_health_checks=True,
-            ssl_require=False,
-        )
-    }
+    _database_url = os.environ["DATABASE_URL"]
+    _db_kwargs = {"conn_max_age": 600, "conn_health_checks": True}
+    if _database_url.startswith("postgres://"):
+        _database_url = "postgresql://" + _database_url[len("postgres://") :]
+    if "railway.internal" in _database_url:
+        if "sslmode=" not in _database_url:
+            _database_url += "&sslmode=disable" if "?" in _database_url else "?sslmode=disable"
+        _db_kwargs["ssl_require"] = False
+    elif "railway" in _database_url:
+        if "sslmode=" not in _database_url:
+            _database_url += "&sslmode=require" if "?" in _database_url else "?sslmode=require"
+        _db_kwargs["ssl_require"] = not DEBUG
+    else:
+        _db_kwargs["ssl_require"] = False
+    DATABASES = {"default": dj_database_url.parse(_database_url, **_db_kwargs)}
+    DATABASES["default"].setdefault("OPTIONS", {})
+    DATABASES["default"]["OPTIONS"].setdefault("connect_timeout", 10)
 else:
     DATABASES = {
         "default": {
@@ -164,6 +198,12 @@ if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    # Railway probes /api/health/ over plain HTTP inside the container.
+    SECURE_SSL_REDIRECT = False if IS_RAILWAY else os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

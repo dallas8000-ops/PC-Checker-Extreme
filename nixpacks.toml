@@ -1,0 +1,5 @@
+[start]
+cmd = "bash scripts/docker-start.sh"
+
+[phases.build]
+cmds = ["python manage.py collectstatic --noinput"]
