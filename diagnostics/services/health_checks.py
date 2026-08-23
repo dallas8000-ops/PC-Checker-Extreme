@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 import psutil
 
 
-def run_health_checks(hardware: dict, software: dict) -> dict:
+def run_health_checks(hardware: dict, software: dict, cleanup: dict | None = None) -> dict:
     checks = []
+    cleanup = cleanup or {}
     metrics = hardware.get("live_metrics", {})
     memory = metrics.get("memory", {})
 
@@ -83,6 +84,52 @@ def run_health_checks(hardware: dict, software: dict) -> dict:
                 "message": "Install pending Windows updates for security and stability.",
             }
         )
+
+    driver_updates = win_updates.get("driver_count", 0) or len(win_updates.get("drivers", []))
+    if driver_updates > 0:
+        checks.append(
+            {
+                "id": "driver_updates",
+                "severity": "warning",
+                "title": f"{driver_updates} driver update(s) pending",
+                "message": "Review Windows Update driver packages for device stability and compatibility.",
+            }
+        )
+
+    junk = cleanup.get("junk_files", {})
+    reclaimable_mb = junk.get("total_reclaimable_mb", 0) or 0
+    if reclaimable_mb >= 2048:
+        checks.append({
+            "id": "junk_files_high",
+            "severity": "warning",
+            "title": f"{reclaimable_mb / 1024:.1f} GB of temp/junk files found",
+            "message": "Temp folders and Recycle Bin are holding reclaimable space. Run a cleanup.",
+        })
+    elif reclaimable_mb >= 512:
+        checks.append({
+            "id": "junk_files_moderate",
+            "severity": "info",
+            "title": f"{reclaimable_mb:.0f} MB of temp/junk files found",
+            "message": "A quick temp-file cleanup could free up some space.",
+        })
+
+    hog = (cleanup.get("top_processes", {}) or {}).get("resource_hog")
+    if hog:
+        checks.append({
+            "id": "process_memory_hog",
+            "severity": "warning",
+            "title": f"{hog['name']} is using {hog['memory_mb'] / 1024:.1f} GB of RAM",
+            "message": "Consider closing it if you do not need it running, or check for a runaway process.",
+        })
+
+    network = cleanup.get("network", {})
+    if network.get("available") and not network.get("internet_connected", True):
+        checks.append({
+            "id": "no_internet",
+            "severity": "warning",
+            "title": "No internet connectivity detected",
+            "message": f"Could not reach {network.get('checked_host', 'the internet')}. Check your network connection.",
+        })
 
     boot_iso = metrics.get("boot_time")
     if boot_iso:

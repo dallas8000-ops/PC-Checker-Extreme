@@ -142,19 +142,25 @@ def collect_windows_updates_status() -> dict:
     try {
         $session = New-Object -ComObject Microsoft.Update.Session
         $searcher = $session.CreateUpdateSearcher()
-        $result = $searcher.Search("IsInstalled=0 and Type='Software'")
-        $updates = @()
-        foreach ($u in $result.Updates) {
-            $updates += [ordered]@{
-                Title = $u.Title
-                Description = $u.Description.Substring(0, [Math]::Min(200, $u.Description.Length))
-                IsMandatory = $u.IsMandatory
-                MaxDownloadSize = $u.MaxDownloadSize
+        function Get-PendingUpdates($criteria, $limit) {
+            $result = $searcher.Search($criteria)
+            $updates = @()
+            foreach ($u in $result.Updates | Select-Object -First $limit) {
+                $description = $u.Description
+                $updates += [ordered]@{
+                    Title = $u.Title
+                    Description = if ($description) { $description.Substring(0, [Math]::Min(200, $description.Length)) } else { '' }
+                    IsMandatory = $u.IsMandatory
+                    MaxDownloadSize = $u.MaxDownloadSize
+                }
             }
+            return $updates
         }
-        @{ count = $updates.Count; updates = $updates | Select-Object -First 25 } | ConvertTo-Json -Depth 4 -Compress
+        $updates = @(Get-PendingUpdates "IsInstalled=0 and Type='Software'" 25)
+        $drivers = @(Get-PendingUpdates "IsInstalled=0 and Type='Driver'" 25)
+        @{ count = $updates.Count; updates = $updates; driver_count = $drivers.Count; drivers = $drivers } | ConvertTo-Json -Depth 4 -Compress
     } catch {
-        @{ count = 0; error = $_.Exception.Message } | ConvertTo-Json -Compress
+        @{ count = 0; updates = @(); driver_count = 0; drivers = @(); error = $_.Exception.Message } | ConvertTo-Json -Compress
     }
     """
     stdout, stderr, code = run_powershell(script, timeout=WINDOWS_UPDATE_TIMEOUT_SEC)
@@ -163,16 +169,18 @@ def collect_windows_updates_status() -> dict:
             "available": False,
             "count": 0,
             "updates": [],
+            "driver_count": 0,
+            "drivers": [],
             "error": f"Windows Update check failed: {stderr or 'PowerShell error'}",
             "timed_out": "Timed out" in (stderr or ""),
         }
     if not stdout.strip():
-        return {"available": False, "count": 0, "updates": []}
+        return {"available": False, "count": 0, "updates": [], "driver_count": 0, "drivers": []}
     try:
         data = json.loads(stdout)
         return {"available": True, **data}
     except json.JSONDecodeError:
-        return {"available": False, "count": 0, "updates": []}
+        return {"available": False, "count": 0, "updates": [], "driver_count": 0, "drivers": []}
 
 
 def collect_software(

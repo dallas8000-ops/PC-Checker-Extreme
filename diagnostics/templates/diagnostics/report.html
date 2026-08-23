@@ -244,6 +244,31 @@
     </table>
   </section>
   {% endif %}
+  {% if top_processes.processes %}
+  <section class="card">
+    <h2>Top processes by memory</h2>
+    <table class="component-table">
+      <thead><tr><th>Process</th><th>Memory</th><th>CPU</th></tr></thead>
+      <tbody>
+        {% for p in top_processes.processes %}
+        <tr><td>{{ p.name }}</td><td>{{ p.memory_mb }} MB</td><td>{{ p.cpu_percent }}%</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+  {% if junk_files.available %}
+  <section class="card">
+    <h2>Temp &amp; junk files</h2>
+    <div class="metrics">
+      {% for loc in junk_files.locations %}
+      <div class="metric"><span class="metric-label">{{ loc.label }}</span><span class="metric-value">{{ loc.size_mb }} MB</span></div>
+      {% endfor %}
+    </div>
+    <p class="detail-chip">Estimated reclaimable space: {{ junk_files.total_reclaimable_mb }} MB</p>
+    {% if network_status.available %}<p class="hint">Internet connectivity: {% if network_status.internet_connected %}OK{% else %}Not detected{% endif %}</p>{% endif %}
+  </section>
+  {% endif %}
 
   {% for category, items in components_by_category.items %}
   <section class="card collapsible driver-section" {% if category == "Drivers" %}id="drivers-section"{% endif %}>
@@ -417,6 +442,17 @@
     <h2>Pending Windows updates</h2>
     <ul class="win-updates">
       {% for u in windows_updates %}
+      <li>{{ u.Title }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if driver_updates %}
+  <section class="card">
+    <h2>Pending driver updates</h2>
+    <ul class="win-updates">
+      {% for u in driver_updates %}
       <li>{{ u.Title }}</li>
       {% endfor %}
     </ul>

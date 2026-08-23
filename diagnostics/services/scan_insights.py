@@ -199,6 +199,25 @@ def build_command_playbook(snapshot: dict) -> list[dict]:
             }
         )
 
+    junk = snapshot.get("cleanup", {}).get("junk_files", {})
+    if (junk.get("total_reclaimable_mb") or 0) >= 512:
+        commands.extend([
+            {
+                "title": "Clear user temp files",
+                "category": "cleanup",
+                "command": 'Remove-Item "$env:TEMP\\*" -Recurse -Force -ErrorAction SilentlyContinue',
+                "description": "Clears your user temp folder. Temp files regenerate automatically.",
+                "admin": False,
+            },
+            {
+                "title": "Empty Recycle Bin",
+                "category": "cleanup",
+                "command": "Clear-RecycleBin -Force -ErrorAction SilentlyContinue",
+                "description": "Permanently empties the Recycle Bin.",
+                "admin": False,
+            },
+        ])
+
     winget = software.get("outdated_winget", {})
     if winget.get("packages"):
         cmds = snapshot.get("winget_batch_command") or "winget upgrade --all --disable-interactivity"
@@ -302,6 +321,38 @@ def _guess_workload(snapshot: dict) -> str:
     return "General desktop / office"
 
 
+def _build_msi_motherboard_advisory(board: dict, snapshot: dict) -> str:
+    manufacturer = (board.get("manufacturer") or "").lower()
+    product = board.get("product", "")
+    nvidia_present = any(
+        (comp.get("category") == "GPU" and "nvidia" in (comp.get("manufacturer") or "").lower())
+        for comp in snapshot.get("hardware", {}).get("components_by_manufacturer", [])
+    )
+    if manufacturer == "msi":
+        note = (
+            "MSI motherboard detected. Update the BIOS and chipset drivers from MSI support first, then verify PCIe slot configuration "
+            "and BIOS settings such as Above 4G Decoding / Resize BAR when using NVIDIA graphics."
+        )
+        if nvidia_present:
+            note += " If you see GPU stability or performance issues, perform a clean NVIDIA driver install after the BIOS update."
+        return note
+    return "Download chipset / LAN / audio drivers for your board."
+
+
+def _build_nvidia_gpu_advisory(name: str, manufacturer: str, driver_version: str | None) -> tuple[str, str | None]:
+    note = (
+        "NVIDIA GPU detected. Update the driver from NVIDIA support and consider a clean install if you have display, performance, or stability issues."
+    )
+    if driver_version:
+        note += f" Installed driver version: {driver_version}."
+    query = resolve_driver_sources(vendor=manufacturer, model=name, component="GPU")
+    support_url = next(
+        (m.get("support_url") for m in query.get("matches", []) if m.get("key") == "nvidia"),
+        None,
+    )
+    return note, support_url
+
+
 def build_driver_gap_report(snapshot: dict) -> list[dict]:
     """OEM support links + per-driver update URLs for key devices."""
     gaps = []
@@ -327,7 +378,7 @@ def build_driver_gap_report(snapshot: dict) -> list[dict]:
                     "driver_url": m.get("driver_url"),
                     "support_url": m.get("support_url"),
                     "status": "check_oem",
-                    "note": "Download chipset / LAN / audio drivers for your board.",
+                    "note": _build_msi_motherboard_advisory(board, snapshot),
                 }
             )
 
@@ -337,19 +388,26 @@ def build_driver_gap_report(snapshot: dict) -> list[dict]:
                 continue
             name = comp.get("name", "")
             mfr = comp.get("manufacturer", "")
+            driver_version = comp.get("details", {}).get("driver_version")
             url = comp.get("details", {}).get("update_url") or driver_update_url(name, mfr)
             key = (cat, name[:50])
             if key in seen:
                 continue
             seen.add(key)
+            support_url = url
+            note = f"Verify driver version: {driver_version or 'unknown'}."
+            if cat == "GPU" and "nvidia" in mfr.lower():
+                advisory, nvidia_support_url = _build_nvidia_gpu_advisory(name, mfr, driver_version)
+                note = advisory
+                support_url = nvidia_support_url or support_url
             gaps.append(
                 {
                     "device": name,
                     "class": cat,
                     "driver_url": url,
-                    "support_url": url,
+                    "support_url": support_url,
                     "status": "update_recommended",
-                    "note": f"Verify driver version: {comp.get('details', {}).get('driver_version', 'unknown')}",
+                    "note": note,
                 }
             )
     return gaps[:15]

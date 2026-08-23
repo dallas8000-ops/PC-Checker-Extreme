@@ -1,4 +1,5 @@
 from .ai_analyzer import analyze_system
+from .cleanup_check import collect_junk_files, collect_network_status, collect_top_processes
 from .extended_diagnostics import (
     analyze_duplicate_drivers,
     build_winget_batch_command,
@@ -62,6 +63,14 @@ def run_full_scan(
     progress(50, "Running benchmark…")
     benchmark = collect_benchmark()
 
+    progress(52, "Top processes by memory…")
+    cleanup = {
+        "top_processes": collect_top_processes(),
+        "junk_files": collect_junk_files(),
+    }
+    progress(56, "Checking internet connectivity…")
+    cleanup["network"] = collect_network_status()
+
     if include_software_inventory:
         progress(55, "Installed programs (registry)…")
     else:
@@ -72,7 +81,7 @@ def run_full_scan(
     )
 
     progress(70, "Health checks…")
-    health = run_health_checks(hardware, software)
+    health = run_health_checks(hardware, software, cleanup)
 
     components = hardware.get("components_by_manufacturer", [])
     drivers = [c for c in components if c.get("category") == "Drivers"]
@@ -96,6 +105,7 @@ def run_full_scan(
         "battery": battery,
         "duplicate_drivers": duplicate_drivers,
         "winget_batch_command": winget_batch,
+        "cleanup": cleanup,
     }
     snapshot["bottleneck"] = analyze_bottleneck(snapshot)
     snapshot["command_playbook"] = build_command_playbook(snapshot)
