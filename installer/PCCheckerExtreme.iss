@@ -6,8 +6,8 @@
 
 #define AppName      "PC Checker Extreme"
 #define AppVersion   "1.0.0"
-#define AppPublisher "Your Company Name"
-#define AppURL       "https://your-website.example.com"
+#define AppPublisher "Gilliom Frontline Digital"
+#define AppURL       "https://gilliomfrontlinedigital.com"
 
 [Setup]
 ; Unique GUID for the app - regenerate if you fork/brand this
