@@ -8,9 +8,30 @@
 # (run from the installer/ folder, with the project's venv active)
 
 import os
+import sys
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(SPEC), ".."))
+INSTALLER_DIR = os.path.dirname(SPEC)
+PROJECT_ROOT = os.path.abspath(os.path.join(INSTALLER_DIR, ".."))
+
+# collect_submodules()/collect_data_files() import the target package for
+# real under the hood, and Django's own PyInstaller hook looks for
+# manage.py relative to the current working directory to find "the
+# project" -- neither works unless the project root is actually on
+# sys.path and is the process's cwd, regardless of what directory this
+# spec was invoked from.
+sys.path.insert(0, PROJECT_ROOT)
+os.chdir(PROJECT_ROOT)
+
+# collect_submodules("diagnostics") has to import diagnostics.models, which
+# defines Django ORM model classes -- that raises AppRegistryNotReady unless
+# Django's app registry is already initialized first. PyInstaller silently
+# swallows that exception and just reports "not a package", which is what
+# was actually happening here (diagnostics/__init__.py exists just fine --
+# this was never really a package-detection problem).
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "pc_checker_extreme.settings")
+import django
+django.setup()
 
 # Django doesn't statically "import" migration files, app templates, or
 # static assets the way PyInstaller's analyzer expects -- collect them
@@ -18,6 +39,22 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(SPEC), ".."))
 hidden = (
     collect_submodules("diagnostics")
     + collect_submodules("pc_checker_extreme")
+    # Explicit fallback: collect_submodules("diagnostics") skips diagnostics.services
+    # at spec-parse time because AppRegistryNotReady fires before the registry is set up.
+    + [
+        "diagnostics.services.ai_analyzer",
+        "diagnostics.services.cleanup_check",
+        "diagnostics.services.driver_lookup",
+        "diagnostics.services.extended_diagnostics",
+        "diagnostics.services.hardware_collector",
+        "diagnostics.services.health_checks",
+        "diagnostics.services.oem_detection",
+        "diagnostics.services.powershell",
+        "diagnostics.services.scan_insights",
+        "diagnostics.services.scan_runner",
+        "diagnostics.services.scanner",
+        "diagnostics.services.software_collector",
+    ]
     + [
         "whitenoise.middleware",
         "whitenoise.storage",
@@ -34,6 +71,7 @@ hidden = (
 
 datas = (
     collect_data_files("diagnostics")
+    + collect_data_files("pc_checker_extreme")
     + [(os.path.join(PROJECT_ROOT, "manage.py"), ".")]
 )
 
@@ -48,8 +86,8 @@ common_kwargs = dict(
     noarchive=False,
 )
 
-app_analysis = Analysis(["run_app.py"], **common_kwargs)
-stop_analysis = Analysis(["stop_app.py"], **common_kwargs)
+app_analysis = Analysis([os.path.join(INSTALLER_DIR, "run_app.py")], **common_kwargs)
+stop_analysis = Analysis([os.path.join(INSTALLER_DIR, "stop_app.py")], **common_kwargs)
 
 MERGE(
     (app_analysis, "run_app", "PCCheckerExtreme"),
