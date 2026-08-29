@@ -56,7 +56,7 @@ def ensure_pyinstaller():
 
 def collect_static():
     print("\n=== Collecting static files ===")
-    run([PYTHON, "manage.py", "collectstatic", "--noinput", "--clear", "--quiet"])
+    run([PYTHON, "manage.py", "collectstatic", "--noinput", "--clear", "--verbosity", "0"])
 
 
 def build_seeded_database():
@@ -86,6 +86,8 @@ def build_seeded_database():
 
 def build_main_app():
     print("\n=== Building PCCheckerExtreme.exe + Stop PC Checker Extreme.exe ===")
+    # DJANGO_ROOT tells PyInstaller's Django hook where manage.py lives.
+    os.environ.setdefault("DJANGO_ROOT", PROJECT_ROOT)
     run(
         [PYTHON, "-m", "PyInstaller", "--noconfirm", "pcc.spec"],
         cwd=INSTALLER_DIR,
