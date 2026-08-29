@@ -48,6 +48,15 @@ def open_browser_when_ready():
 
 def main():
     write_pid()
+
+    # --noconsole builds set sys.stdout/stderr to None; Django crashes writing to them.
+    log_path = os.path.join(APP_DIR, "server.log")
+    _log = open(log_path, "w", encoding="utf-8", buffering=1)
+    if sys.stdout is None:
+        sys.stdout = _log
+    if sys.stderr is None:
+        sys.stderr = _log
+
     threading.Thread(target=open_browser_when_ready, daemon=True).start()
 
     from django.core.management import execute_from_command_line
