@@ -67,11 +67,18 @@ hidden = (
         "wmi",
         "win32timezone",  # commonly needed by pywin32 even when not imported directly
     ]
+    # sentry_sdk's integrations (django, logging, stdlib, excepthook, ...) are
+    # loaded dynamically by name at sentry_sdk.init() time, so PyInstaller's
+    # static analyzer never sees the import and silently drops them otherwise.
+    + collect_submodules("sentry_sdk")
+    + ["certifi"]
 )
 
 datas = (
     collect_data_files("diagnostics")
     + collect_data_files("pc_checker_extreme")
+    + collect_data_files("sentry_sdk")
+    + collect_data_files("certifi")
     + [(os.path.join(PROJECT_ROOT, "manage.py"), ".")]
 )
 

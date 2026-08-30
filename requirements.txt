@@ -7,5 +7,6 @@ whitenoise>=6.8.0
 dj-database-url>=2.3.0
 psycopg2-binary>=2.9.10
 xhtml2pdf>=0.2.16
+sentry-sdk>=2.18.0
 WMI>=1.5.1; sys_platform == "win32"
 pywin32>=308; sys_platform == "win32"

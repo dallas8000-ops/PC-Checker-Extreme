@@ -45,6 +45,28 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "false" if IS_HOSTED else "true").lower()
     "yes",
 )
 
+# Error tracking (Sentry) -- every install (yours and every customer's) reports
+# crashes back to one shared Sentry project, so real bugs get caught even when
+# nobody files a bug report. The DSN below is a Sentry "write-only" key -- safe
+# to ship inside the app; it cannot be used to read data out of the account.
+# Set SENTRY_DSN in .env to override (e.g. point a specific install elsewhere)
+# or set it to an empty string to disable reporting entirely.
+_sentry_dsn = os.environ.get(
+    "SENTRY_DSN",
+    "https://c0e633807439150788033afbacfa2817@o4512001421148160.ingest.us.sentry.io/4512001585905664",
+).strip()
+if _sentry_dsn and not _django_build_command_running():
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[DjangoIntegration()],
+        environment="production" if not DEBUG else "development",
+        send_default_pii=False,
+        traces_sample_rate=0.2,
+    )
+
 
 def _https_origin(host: str) -> str:
     host = host.strip()
