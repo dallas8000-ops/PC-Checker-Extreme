@@ -2,7 +2,9 @@
 set -e
 
 echo "[pc-checker] migrate..."
-python manage.py migrate --noinput || echo "[pc-checker] WARN: migrate failed — starting gunicorn anyway"
+# Do not swallow migrate failures — a bad DB means the app is broken.
+# Let the non-zero exit kill the container so Railway marks the deploy failed.
+python manage.py migrate --noinput
 
 PORT="${PORT:-8080}"
 echo "[pc-checker] gunicorn on 0.0.0.0:${PORT}"
