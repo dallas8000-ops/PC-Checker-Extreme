@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PC Checker Extreme — Installation Guide</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+       background:#f5f7fa;color:#1a1a2e;line-height:1.6;padding:40px 20px}
+  .page{max-width:680px;margin:0 auto;background:#fff;border-radius:12px;
+        padding:48px 52px;box-shadow:0 4px 24px rgba(0,0,0,.10)}
+  h1{font-size:1.9rem;color:#0f1e3c;margin-bottom:4px}
+  .sub{color:#5a6a8a;font-size:.95rem;margin-bottom:32px}
+  h2{font-size:1.05rem;font-weight:700;color:#0f1e3c;margin:28px 0 10px;
+     display:flex;align-items:center;gap:8px}
+  h2 .num{background:#00b4a0;color:#fff;border-radius:50%;width:24px;height:24px;
+           display:flex;align-items:center;justify-content:center;
+           font-size:.78rem;flex-shrink:0}
+  p{color:#3a4a6a;margin-bottom:8px;font-size:.97rem}
+  .box{background:#f0f4ff;border-left:3px solid #00b4a0;border-radius:6px;
+       padding:12px 16px;margin:10px 0;font-family:"Courier New",monospace;
+       font-size:.88rem;color:#0f1e3c}
+  .tip{background:#fffbea;border-left:3px solid #f5a623;border-radius:6px;
+       padding:10px 14px;margin:14px 0;font-size:.9rem;color:#5a4000}
+  .tip strong{color:#b36000}
+  .check{color:#00b4a0;font-weight:700}
+  hr{border:none;border-top:1px solid #e8ecf4;margin:32px 0}
+  .footer{text-align:center;color:#8a9ab8;font-size:.82rem;margin-top:32px}
+  a{color:#00b4a0}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>PC Checker Extreme</h1>
+  <p class="sub">Installation Guide &nbsp;·&nbsp; v1.0.0 &nbsp;·&nbsp; Gilliom Frontline Digital</p>
+
+  <h2><span class="num">1</span> What's in this folder</h2>
+  <p>Your download contains two items:</p>
+  <div class="box">
+    app\                        ← the bundled application (do not move)<br>
+    Install PC Checker Extreme.exe
+  </div>
+  <p>Keep them together. The installer reads from <code>app\</code> — if you move
+  the exe without the folder, it will not work.</p>
+
+  <h2><span class="num">2</span> Install</h2>
+  <p>Double-click <strong>Install PC Checker Extreme.exe</strong>.</p>
+  <p>No administrator password is needed. The app installs to your personal
+  AppData folder, not to Program&nbsp;Files.</p>
+  <p>When asked <em>"Launch PC Checker Extreme now?"</em> click <strong>Yes</strong>
+  — your browser will open automatically.</p>
+
+  <h2><span class="num">3</span> First sign-in</h2>
+  <p>On first launch, the app opens to a login page. Because it's a fresh install,
+  no account exists yet. Create yours at:</p>
+  <div class="box">http://127.0.0.1:8000/accounts/signup/</div>
+  <p>After signing up you are logged in immediately and ready to run your first scan.</p>
+
+  <h2><span class="num">4</span> Launching after install</h2>
+  <p>Use the <span class="check">PC Checker Extreme</span> shortcut in your
+  <strong>Start Menu</strong> or on your <strong>Desktop</strong>. The browser
+  opens automatically after a few seconds. There is no visible window — the server
+  runs silently in the background.</p>
+
+  <div class="tip">
+    <strong>Tip:</strong> Run the app as Administrator for the most complete
+    hardware and Windows Update data (right-click the shortcut → <em>Run as
+    administrator</em>).
+  </div>
+
+  <h2><span class="num">5</span> Stopping the server</h2>
+  <p>Use <strong>Start Menu → Stop PC Checker Extreme</strong> when you're done,
+  or simply restart your PC. Closing the browser tab does <em>not</em> stop the
+  server.</p>
+
+  <h2><span class="num">6</span> Uninstall</h2>
+  <p>Open <strong>Settings → Apps</strong>, search for <em>PC Checker Extreme</em>,
+  and click <strong>Uninstall</strong>. This removes the app, shortcuts, and
+  registry entry. Your scan history is removed as well.</p>
+
+  <hr>
+
+  <h2><span class="num">7</span> Troubleshooting</h2>
+  <p><strong>Browser shows "This site can't be reached"</strong> — the server takes
+  2–3 seconds to start. Wait a moment and refresh, or navigate to
+  <code>http://127.0.0.1:8000/</code> manually.</p>
+  <p><strong>Port 8000 already in use</strong> — another app is using that port.
+  Stop it, then relaunch PC Checker Extreme.</p>
+  <p><strong>Antivirus quarantines the exe</strong> — this is a false positive common
+  with PyInstaller-packaged apps. Add an exception for the install folder
+  (<code>%LOCALAPPDATA%\PC Checker Extreme</code>) in your antivirus settings.</p>
+
+  <div class="footer">
+    PC Checker Extreme &nbsp;·&nbsp; Gilliom Frontline Digital &nbsp;·&nbsp;
+    <a href="https://gilliomfrontlinedigital.com">gilliomfrontlinedigital.com</a>
+  </div>
+
+</div>
+</body>
+</html>

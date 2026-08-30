@@ -67,7 +67,13 @@ def install_dir():
 def create_shortcut(path, target, working_dir, icon):
     # Use PowerShell subprocess so COM runs outside the frozen process,
     # avoiding the pywintypes.com_error inheritance-chain bug in PyInstaller.
+    # Use the full path to powershell.exe — the frozen exe's PATH is minimal.
     import subprocess
+
+    ps_exe = os.path.join(
+        os.environ.get("SystemRoot", r"C:\Windows"),
+        r"System32\WindowsPowerShell\v1.0\powershell.exe",
+    )
 
     def _esc(s):
         return s.replace("'", "''")
@@ -81,7 +87,7 @@ def create_shortcut(path, target, working_dir, icon):
         f"$sc.Save()"
     )
     subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        [ps_exe, "-NoProfile", "-NonInteractive", "-Command", script],
         capture_output=True,
     )
 

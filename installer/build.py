@@ -84,6 +84,13 @@ def build_seeded_database():
             shutil.move(backup_db, dev_db)
 
 
+def build_icon():
+    icon_path = os.path.join(INSTALLER_DIR, "icon.ico")
+    if not os.path.exists(icon_path):
+        print("\n=== Generating icon.ico ===")
+        run([PYTHON, os.path.join(INSTALLER_DIR, "make_icon.py")])
+
+
 def build_main_app():
     print("\n=== Building PCCheckerExtreme.exe + Stop PC Checker Extreme.exe ===")
     # DJANGO_ROOT tells PyInstaller's Django hook where manage.py lives.
@@ -144,6 +151,11 @@ def assemble_distributable():
         os.path.join(dist_final, "Install PC Checker Extreme.exe"),
     )
 
+    # Install guide for the customer.
+    install_html = os.path.join(INSTALLER_DIR, "INSTALL.html")
+    if os.path.exists(install_html):
+        shutil.copy2(install_html, os.path.join(dist_final, "INSTALL.html"))
+
     zip_path = os.path.join(
         INSTALLER_DIR, f"PCCheckerExtreme-Installer-v{APP_VERSION}.zip"
     )
@@ -165,6 +177,7 @@ def assemble_distributable():
 
 def main():
     ensure_pyinstaller()
+    build_icon()
     collect_static()
     build_seeded_database()
     build_main_app()
