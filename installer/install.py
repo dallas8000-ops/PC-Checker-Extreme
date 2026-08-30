@@ -33,6 +33,17 @@ MB_ICONQUESTION = 0x20
 IDYES = 6
 
 
+def _get_desktop_path():
+    """Use Shell API so OneDrive-redirected Desktops resolve correctly."""
+    try:
+        buf = ctypes.create_unicode_buffer(260)
+        if ctypes.windll.shell32.SHGetFolderPathW(0, 0x0010, 0, 0, buf) == 0:
+            return buf.value
+    except Exception:
+        pass
+    return os.path.join(os.environ.get("USERPROFILE", ""), "Desktop")
+
+
 def show_message(text, title=APP_NAME, icon=MB_ICONINFORMATION):
     ctypes.windll.user32.MessageBoxW(0, text, title, icon)
 
@@ -54,14 +65,25 @@ def install_dir():
 
 
 def create_shortcut(path, target, working_dir, icon):
-    import win32com.client
+    # Use PowerShell subprocess so COM runs outside the frozen process,
+    # avoiding the pywintypes.com_error inheritance-chain bug in PyInstaller.
+    import subprocess
 
-    shell = win32com.client.Dispatch("WScript.Shell")
-    shortcut = shell.CreateShortCut(path)
-    shortcut.Targetpath = target
-    shortcut.WorkingDirectory = working_dir
-    shortcut.IconLocation = icon
-    shortcut.save()
+    def _esc(s):
+        return s.replace("'", "''")
+
+    script = (
+        f"$ws = New-Object -ComObject WScript.Shell; "
+        f"$sc = $ws.CreateShortcut('{_esc(path)}'); "
+        f"$sc.TargetPath = '{_esc(target)}'; "
+        f"$sc.WorkingDirectory = '{_esc(working_dir)}'; "
+        f"$sc.IconLocation = '{_esc(icon)}'; "
+        f"$sc.Save()"
+    )
+    subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True,
+    )
 
 
 def do_install():
@@ -82,6 +104,11 @@ def do_install():
             "Reinstall (your saved data and .env will be kept)?"
         ):
             return
+        # Kill any running instances so Windows releases the file locks.
+        import subprocess, time
+        for exe_name in ["PCCheckerExtreme.exe", "Stop PC Checker Extreme.exe"]:
+            subprocess.run(["taskkill", "/f", "/im", exe_name], capture_output=True)
+        time.sleep(1)
         # Copy over the existing install, but don't touch .env or db.sqlite3 --
         # those hold this customer's generated secret key and their data.
         for name in os.listdir(payload_dir):
@@ -132,15 +159,18 @@ def do_install():
         os.environ["APPDATA"], "Microsoft", "Windows", "Start Menu", "Programs", APP_NAME
     )
     os.makedirs(start_menu, exist_ok=True)
-    create_shortcut(os.path.join(start_menu, f"{APP_NAME}.lnk"), exe_path, dest, icon_path)
-    create_shortcut(
-        os.path.join(start_menu, f"Stop {APP_NAME}.lnk"), stop_exe_path, dest, icon_path
-    )
+    try:
+        create_shortcut(os.path.join(start_menu, f"{APP_NAME}.lnk"), exe_path, dest, icon_path)
+        create_shortcut(
+            os.path.join(start_menu, f"Stop {APP_NAME}.lnk"), stop_exe_path, dest, icon_path
+        )
+    except Exception:
+        pass
 
-    desktop = os.path.join(os.environ["USERPROFILE"], "Desktop")
+    desktop = _get_desktop_path()
     try:
         create_shortcut(os.path.join(desktop, f"{APP_NAME}.lnk"), exe_path, dest, icon_path)
-    except OSError:
+    except Exception:
         pass  # desktop shortcut is a nice-to-have, never block install over it
 
     # Register in "Apps & Features" (HKCU -- no admin rights needed).

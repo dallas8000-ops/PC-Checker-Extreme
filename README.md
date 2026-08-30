@@ -89,6 +89,33 @@ Double-click **`Launch PC Checker Extreme.vbs`** to start without opening an edi
 
 ---
 
+## Windows standalone installer
+
+For end-user distribution (no Python, no editor required on the target machine):
+
+```powershell
+# From the project root with the dev venv active:
+.venv\Scripts\python.exe installer\build.py
+```
+
+This produces `installer/PCCheckerExtreme-Installer-v1.0.0.zip`. Extract it anywhere and double-click **`Install PC Checker Extreme.exe`**.
+
+**What the installer does:**
+- Copies the self-contained app (bundled Python 3.11 runtime + Django) to `%LOCALAPPDATA%\PC Checker Extreme`
+- Writes a fresh `.env` with a generated `DJANGO_SECRET_KEY`
+- Creates Start Menu and Desktop shortcuts
+- Registers in **Apps & Features** (uninstall via `Settings → Apps` or the Start Menu)
+- No admin rights required
+
+**First run:** after installation, use the **Start Menu** shortcut or `PCCheckerExtreme.exe` in the install folder. The browser opens automatically. Navigate to `http://127.0.0.1:8000/accounts/signup/` to create your account on first use (the fresh database has no users).
+
+**Key fixes bundled in the build:**
+- `BASE_DIR` detection: when frozen, resolves to the exe directory (not `_internal/`) so `db.sqlite3` and `staticfiles/` are found correctly
+- Shortcut creation uses a PowerShell subprocess to avoid a `pywintypes.com_error` inheritance bug inside PyInstaller-frozen executables
+- OneDrive-redirected Desktop paths handled via `SHGetFolderPathW`
+
+---
+
 ## Deploy (Railway)
 
 The web UI deploys to Railway as a Django service. Hardware-scan features remain Windows-local

@@ -5,9 +5,14 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# PyInstaller --onedir: __file__ is inside _internal/, but db.sqlite3/.env/staticfiles
+# sit next to the exe.  Use the exe's directory so all paths resolve correctly.
+if getattr(sys, "frozen", False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 IS_RENDER = os.environ.get("RENDER", "").lower() in ("1", "true", "yes")
 IS_RAILWAY = bool(
