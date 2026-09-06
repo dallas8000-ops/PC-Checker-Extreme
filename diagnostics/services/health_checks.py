@@ -279,8 +279,6 @@ def run_health_checks(hardware: dict, software: dict, cleanup: dict | None = Non
                 }
             )
 
-    return checks
-
     severity_order = {"critical": 0, "warning": 1, "info": 2, "ok": 3}
     checks.sort(key=lambda c: severity_order.get(c["severity"], 9))
 
