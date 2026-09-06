@@ -222,15 +222,24 @@ STORAGES = {
 }
 
 if not DEBUG:
-    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    # Railway probes /api/health/ over plain HTTP inside the container.
-    SECURE_SSL_REDIRECT = False if IS_RAILWAY else os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "true").lower() in (
+    # HTTPS hardening only makes sense when hosted behind a real TLS proxy.
+    # A local/desktop install serves plain HTTP on 127.0.0.1 -- enabling
+    # SECURE_SSL_REDIRECT there makes the browser speak TLS to a plain-HTTP
+    # server, and the app never loads. Self-hosters can still opt in
+    # explicitly via DJANGO_SECURE_SSL_REDIRECT=true.
+    _ssl_opt_in = os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "").strip().lower() in (
         "1",
         "true",
         "yes",
     )
+    if IS_HOSTED or _ssl_opt_in:
+        SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+        SESSION_COOKIE_SECURE = True
+        CSRF_COOKIE_SECURE = True
+        # Railway probes /api/health/ over plain HTTP inside the container.
+        SECURE_SSL_REDIRECT = False if IS_RAILWAY else True
+    else:
+        SECURE_SSL_REDIRECT = False
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
