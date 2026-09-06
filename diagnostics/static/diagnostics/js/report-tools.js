@@ -1,4 +1,49 @@
 (function () {
+  function readCsrf() {
+    const input = document.querySelector("[name=csrfmiddlewaretoken]");
+    if (input) return input.value;
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+
+  document.querySelectorAll(".btn-fix").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const fixId = btn.getAttribute("data-fix-id");
+      const result = btn.parentElement.querySelector(".fix-result");
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = "Working…";
+      if (result) result.textContent = "";
+
+      fetch("/api/fix/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": readCsrf(),
+        },
+        body: JSON.stringify({ fix_id: fixId }),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          const msg = data.message || data.error || "Done";
+          if (result) {
+            result.textContent = " " + msg;
+            result.className = "fix-result " + (data.ok ? "fix-ok" : "fix-fail");
+          }
+          btn.textContent = data.ok ? "Done" : "Failed";
+          if (!data.ok) btn.disabled = false;
+        })
+        .catch(function (err) {
+          if (result) {
+            result.textContent = " Request failed: " + err;
+            result.className = "fix-result fix-fail";
+          }
+          btn.textContent = prev;
+          btn.disabled = false;
+        });
+    });
+  });
+
   document.querySelectorAll(".btn-copy-cmd").forEach(function (btn) {
     btn.addEventListener("click", function () {
       const card = btn.closest(".playbook-card");

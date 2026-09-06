@@ -3,6 +3,7 @@
 from django.conf import settings
 
 from diagnostics.services.driver_lookup import resolve_driver_sources
+from diagnostics.services.remediation import FIX_REGISTRY
 
 
 def _detect_manufacturer_queries(snapshot: dict) -> list[dict]:
@@ -64,6 +65,16 @@ def _detect_manufacturer_queries(snapshot: dict) -> list[dict]:
     return deduped[:20]
 
 
+def _mark_fixable_checks(health: dict) -> None:
+    """Annotate each health check with whether an automatic fix exists for it."""
+    for check in health.get("checks", []):
+        entry = FIX_REGISTRY.get(check.get("id", ""))
+        check["fixable"] = bool(entry)
+        if entry:
+            check["fix_id"] = check["id"]
+            check["fix_label"] = entry["title"]
+
+
 def _build_driver_support_sources(snapshot: dict, segment: str = "general") -> list[dict]:
     entries = []
     seen = set()
@@ -98,6 +109,7 @@ def build_report_context(report) -> dict:
     hardware = snapshot.get("hardware", {})
     software = snapshot.get("software", {})
     health = snapshot.get("health", {})
+    _mark_fixable_checks(health)
 
     components = hardware.get("components_by_manufacturer", [])
     by_category = {}

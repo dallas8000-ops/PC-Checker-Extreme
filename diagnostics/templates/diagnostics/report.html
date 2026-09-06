@@ -101,6 +101,10 @@
         <div>
           <strong>{{ check.title }}</strong>
           <p>{{ check.message }}</p>
+          {% if check.fixable %}
+          <button type="button" class="btn-hud btn-hud-magenta btn-fix" data-fix-id="{{ check.fix_id }}">Fix it for me</button>
+          <span class="fix-result" role="status"></span>
+          {% endif %}
         </div>
       </li>
       {% empty %}

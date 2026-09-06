@@ -16,6 +16,7 @@ from .models import ScanReport
 from .report_context import build_report_context
 from .services.driver_lookup import resolve_driver_sources
 from .services.hardware_collector import probe_motherboard_live
+from .services.remediation import apply_fix as run_fix
 from .services.scan_insights import ai_chat_reply, ai_compare_summary, compare_snapshots, summarize_compare_diff
 from .services.scan_runner import start_background_scan
 
@@ -315,6 +316,22 @@ def scan_chat(request, report_id):
         return JsonResponse({"error": "Message too long"}, status=400)
     result = ai_chat_reply(report, message)
     return JsonResponse(result)
+
+
+@login_required
+@require_http_methods(["POST"])
+def apply_fix(request):
+    """Run a user-confirmed remediation for a known health-check id."""
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        body = {}
+    fix_id = (body.get("fix_id") or request.POST.get("fix_id") or "").strip()
+    if not fix_id:
+        return JsonResponse({"error": "fix_id required"}, status=400)
+    result = run_fix(fix_id)
+    status = 200 if result.get("ok") else 400
+    return JsonResponse(result, status=status)
 
 
 @login_required
