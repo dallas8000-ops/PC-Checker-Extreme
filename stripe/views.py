@@ -68,14 +68,19 @@ def checkout(request):
 
 @require_POST
 def portal(request):
-    customer_id = _post_value(request, "customerId")
-    if not customer_id and getattr(request, "user", None) and request.user.is_authenticated:
+    # Never trust a client-supplied customerId here (IDOR: anyone could POST an
+    # arbitrary cus_... and get a live billing-portal session for someone else's
+    # account — same class of bug already fixed in Deployment-Stripe-center).
+    # Resolve the customer purely server-side: DB link for authenticated users,
+    # else the session value set exclusively by our own success() handler.
+    customer_id = None
+    if getattr(request, "user", None) and request.user.is_authenticated:
         from .db import get_stripe_customer_for_user
         customer_id = get_stripe_customer_for_user(request.user.pk)
     if not customer_id:
         customer_id = request.session.get("stripe_customer_id")
     if not customer_id:
-        return JsonResponse({"error": "customerId required"}, status=400)
+        return JsonResponse({"error": "No Stripe customer linked to this account/session"}, status=400)
     app_url = os.environ.get("APP_URL", "https://pc-checker-extreme-production.up.railway.app")
     session = stripe.billing_portal.Session.create(
         customer=customer_id,
