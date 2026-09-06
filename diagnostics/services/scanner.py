@@ -4,10 +4,19 @@ from .extended_diagnostics import (
     analyze_duplicate_drivers,
     build_winget_batch_command,
     collect_benchmark,
+    collect_cpu_throttling,
+    collect_crash_dumps,
+    collect_failing_services,
+    collect_network_latency,
+    collect_old_gpu_drivers,
+    collect_page_file,
+    collect_secure_boot_tpm,
     collect_security_status,
     collect_smart_health,
+    collect_smart_raw_attributes,
     collect_startup_programs,
     collect_temperatures,
+    collect_virtualization_security,
     enrich_drivers_with_links,
 )
 from .hardware_collector import collect_hardware
@@ -63,13 +72,41 @@ def run_full_scan(
     progress(50, "Running benchmark…")
     benchmark = collect_benchmark()
 
-    progress(52, "Top processes by memory…")
+    progress(52, "Crash dumps & drive failure prediction…")
+    crashes = collect_crash_dumps()
+    smart_raw = collect_smart_raw_attributes()
+
+    progress(54, "Security posture (Secure Boot / TPM / Core Isolation)…")
+    virtualization = collect_virtualization_security()
+    secure_boot_tpm = collect_secure_boot_tpm()
+
+    progress(56, "Page file, CPU throttling, services…")
+    page_file = collect_page_file()
+    cpu_throttling = collect_cpu_throttling()
+    failing_services = collect_failing_services()
+    old_gpu_drivers = collect_old_gpu_drivers()
+
+    progress(58, "Network latency…")
+    network_latency = collect_network_latency()
+
+    progress(60, "Top processes by memory…")
     cleanup = {
         "top_processes": collect_top_processes(),
         "junk_files": collect_junk_files(),
     }
-    progress(56, "Checking internet connectivity…")
+    progress(64, "Checking internet connectivity…")
     cleanup["network"] = collect_network_status()
+    cleanup["extended"] = {
+        "crashes": crashes,
+        "smart_raw": smart_raw,
+        "virtualization": virtualization,
+        "secure_boot_tpm": secure_boot_tpm,
+        "page_file": page_file,
+        "cpu_throttling": cpu_throttling,
+        "failing_services": failing_services,
+        "old_gpu_drivers": old_gpu_drivers,
+        "network_latency": network_latency,
+    }
 
     if include_software_inventory:
         progress(55, "Installed programs (registry)…")
@@ -106,6 +143,15 @@ def run_full_scan(
         "duplicate_drivers": duplicate_drivers,
         "winget_batch_command": winget_batch,
         "cleanup": cleanup,
+        "crashes": crashes,
+        "smart_raw": smart_raw,
+        "virtualization": virtualization,
+        "secure_boot_tpm": secure_boot_tpm,
+        "page_file": page_file,
+        "cpu_throttling": cpu_throttling,
+        "failing_services": failing_services,
+        "old_gpu_drivers": old_gpu_drivers,
+        "network_latency": network_latency,
     }
     snapshot["bottleneck"] = analyze_bottleneck(snapshot)
     snapshot["command_playbook"] = build_command_playbook(snapshot)

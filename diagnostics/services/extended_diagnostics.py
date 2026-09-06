@@ -206,3 +206,307 @@ def enrich_drivers_with_links(components: list[dict]) -> list[dict]:
             c.get("name", ""), c.get("manufacturer", "")
         )
     return components
+
+
+def collect_crash_dumps() -> dict:
+    """BSOD / minidump analysis: recent crashes are the top "my PC is broken" complaint."""
+    if sys.platform != "win32":
+        return {"available": False, "count": 0, "dumps": [], "bugchecks": []}
+
+    script = r"""
+    $dumpDir = Join-Path $env:SystemRoot 'Minidump'
+    $dumps = @()
+    if (Test-Path $dumpDir) {
+      $dumps = Get-ChildItem $dumpDir -Filter *.dmp -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 10 Name, @{n='SizeKB';e={[math]::Round($_.Length/1KB,1)}},
+          @{n='When';e={$_.LastWriteTime.ToString('o')}}
+    }
+    $bugchecks = @()
+    try {
+      $bugchecks = Get-WinEvent -FilterHashtable @{ LogName='System'; Id=1001 } -MaxEvents 10 -ErrorAction Stop |
+        Where-Object { $_.Message -match 'bugcheck|blue screen|0x[0-9A-Fa-f]+' } |
+        Select-Object @{n='When';e={$_.TimeCreated.ToString('o')}},
+          @{n='Message';e={ ($_.Message -split "`n")[0].Substring(0, [Math]::Min(160, ($_.Message -split "`n")[0].Length)) }}
+    } catch {}
+    @{ dumps = $dumps; bugchecks = $bugchecks } | ConvertTo-Json -Depth 4 -Compress
+    """
+    raw = run_powershell_stdout(script, timeout=45)
+    if not raw:
+        return {"available": False, "count": 0, "dumps": [], "bugchecks": []}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {"available": False, "count": 0, "dumps": [], "bugchecks": []}
+    dumps = data.get("dumps") or []
+    if isinstance(dumps, dict):
+        dumps = [dumps]
+    bugchecks = data.get("bugchecks") or []
+    if isinstance(bugchecks, dict):
+        bugchecks = [bugchecks]
+    return {
+        "available": True,
+        "count": len(dumps),
+        "dumps": dumps,
+        "bugchecks": bugchecks,
+    }
+
+
+def collect_smart_raw_attributes() -> dict:
+    """Failure-prediction flags + raw wear counters — catches failing drives earlier than
+    the coarse HealthStatus string."""
+    if sys.platform != "win32":
+        return {"available": False, "disks": []}
+
+    script = """
+    $out = @()
+    Get-PhysicalDisk -ErrorAction SilentlyContinue | ForEach-Object {
+      $pd = $_
+      $rel = $pd | Get-StorageReliabilityCounter -ErrorAction SilentlyContinue
+      $predict = $false
+      try {
+        $fp = Get-CimInstance -Namespace root\\wmi -ClassName MSStorageDriver_FailurePredictStatus `
+          -ErrorAction Stop | Where-Object { $_.InstanceName -like \"*$($pd.DeviceId)*\" } | Select-Object -First 1
+        if ($fp) { $predict = [bool]$fp.PredictFailure }
+      } catch {}
+      $out += [ordered]@{
+        FriendlyName = $pd.FriendlyName
+        MediaType = $pd.MediaType
+        PredictFailure = $predict
+        Temperature = $rel.Temperature
+        Wear = $rel.Wear
+        PowerOnHours = $rel.PowerOnHours
+        ReadErrorsTotal = $rel.ReadErrorsTotal
+        WriteErrorsTotal = $rel.WriteErrorsTotal
+      }
+    }
+    if ($out.Count -eq 0) { '[]' } else { $out | ConvertTo-Json -Compress }
+    """
+    raw = run_powershell_stdout(script, timeout=60)
+    disks = []
+    if raw:
+        try:
+            data = json.loads(raw)
+            disks = data if isinstance(data, list) else [data]
+        except json.JSONDecodeError:
+            pass
+    risky = [d for d in disks if d.get("PredictFailure") or (d.get("Wear") or 0) >= 80]
+    return {"available": bool(disks), "disks": disks, "at_risk": risky}
+
+
+def collect_virtualization_security() -> dict:
+    """Memory integrity (Core Isolation / HVCI) — a common security gap Windows flags."""
+    if sys.platform != "win32":
+        return {"available": False}
+
+    script = """
+    try {
+      $dg = Get-CimInstance -Namespace root\\Microsoft\\Windows\\DeviceGuard -ClassName Win32_DeviceGuard -ErrorAction Stop
+      @{
+        available = $true
+        memory_integrity = ($dg.SecurityServicesRunning -contains 2)
+        vbs_running = ($dg.VirtualizationBasedSecurityStatus -eq 2)
+        secure_boot_on = $false
+      } | ConvertTo-Json -Compress
+    } catch {
+      @{ available = $false } | ConvertTo-Json -Compress
+    }
+    """
+    raw = run_powershell_stdout(script, timeout=45)
+    if not raw:
+        return {"available": False}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {"available": False}
+
+
+def collect_secure_boot_tpm() -> dict:
+    """Secure Boot + TPM 2.0 — Windows 11 readiness and security baseline."""
+    if sys.platform != "win32":
+        return {"available": False}
+
+    script = """
+    $sb = $null
+    try { $sb = Confirm-SecureBootUEFI } catch {}
+    $tpm = $null
+    try {
+      $t = Get-Tpm -ErrorAction Stop
+      $tpm = @{
+        present = $true
+        ready = $t.TpmReady
+        enabled = $t.TpmEnabled
+        activated = $t.TpmActivated
+        owned = $t.TpmOwned
+      }
+    } catch {
+      $tpm = @{ present = $false }
+    }
+    $spec = $null
+    try {
+      $spec = (Get-CimInstance -Namespace root\\cimv2\\security\\microsofttpm -ClassName Win32_Tpm -ErrorAction Stop).SpecVersion
+    } catch {}
+    @{ secure_boot = $sb; tpm = $tpm; tpm_spec = $spec } | ConvertTo-Json -Depth 4 -Compress
+    """
+    raw = run_powershell_stdout(script, timeout=45)
+    if not raw:
+        return {"available": False}
+    try:
+        return {"available": True, **json.loads(raw)}
+    except json.JSONDecodeError:
+        return {"available": False}
+
+
+def collect_page_file() -> dict:
+    """Page file health — missing/misconfigured pagefiles cause crashes and slowdowns."""
+    if sys.platform != "win32":
+        return {"available": False}
+
+    script = """
+    $usage = Get-CimInstance Win32_PageFileUsage -ErrorAction SilentlyContinue |
+      Select-Object Name, AllocatedBaseSize, CurrentUsage, PeakUsage
+    $setting = Get-CimInstance Win32_PageFileSetting -ErrorAction SilentlyContinue |
+      Select-Object Name, InitialSize, MaximumSize
+    $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue |
+      Select-Object AutomaticManagedPagefile
+    @{
+      managed = [bool]$cs.AutomaticManagedPagefile
+      usage = @($usage)
+      settings = @($setting)
+    } | ConvertTo-Json -Depth 4 -Compress
+    """
+    raw = run_powershell_stdout(script, timeout=45)
+    if not raw:
+        return {"available": False}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {"available": False}
+    usage = data.get("usage") or []
+    settings = data.get("settings") or []
+    return {
+        "available": True,
+        "managed": data.get("managed", False),
+        "configured": bool(usage or settings),
+        "usage": usage,
+        "settings": settings,
+    }
+
+
+def collect_cpu_throttling() -> dict:
+    """Thermal/power throttling — compares current clock to base clock."""
+    if sys.platform != "win32":
+        return {"available": False}
+
+    script = """
+    Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue |
+      Select-Object Name, MaxClockSpeed, CurrentClockSpeed, LoadPercentage |
+      ConvertTo-Json -Compress
+    """
+    raw = run_powershell_stdout(script, timeout=45)
+    cpus = []
+    if raw:
+        try:
+            data = json.loads(raw)
+            cpus = data if isinstance(data, list) else [data]
+        except json.JSONDecodeError:
+            pass
+    results = []
+    for cpu in cpus:
+        max_clock = cpu.get("MaxClockSpeed") or 0
+        cur_clock = cpu.get("CurrentClockSpeed") or 0
+        ratio = (cur_clock / max_clock) if max_clock else None
+        results.append(
+            {
+                "name": cpu.get("Name", "CPU"),
+                "max_mhz": max_clock,
+                "current_mhz": cur_clock,
+                "load_percent": cpu.get("LoadPercentage"),
+                "clock_ratio": round(ratio, 2) if ratio is not None else None,
+                "throttled": bool(ratio is not None and ratio < 0.6),
+            }
+        )
+    return {"available": bool(results), "cpus": results}
+
+
+def collect_failing_services() -> dict:
+    """Stopped-but-automatic services explain weird behavior."""
+    if sys.platform != "win32":
+        return {"available": False, "services": []}
+
+    script = """
+    Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
+      Where-Object { $_.StartMode -eq 'Auto' -and $_.State -ne 'Running' -and -not $_.DelayedAutoStart } |
+      Select-Object Name, DisplayName, State, StartName, ExitCode |
+      Sort-Object DisplayName |
+      ConvertTo-Json -Compress
+    """
+    raw = run_powershell_stdout(script, timeout=45)
+    services = []
+    if raw:
+        try:
+            data = json.loads(raw)
+            services = data if isinstance(data, list) else [data]
+        except json.JSONDecodeError:
+            pass
+    return {"available": bool(services), "services": services[:25], "count": len(services)}
+
+
+def collect_old_gpu_drivers() -> dict:
+    """Flag GPU drivers older than 6 months — top cause of display/gaming issues."""
+    if sys.platform != "win32":
+        return {"available": False, "old": []}
+
+    script = """
+    $cutoff = (Get-Date).AddMonths(-6)
+    Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue |
+      Where-Object { $_.DeviceClass -eq 'DISPLAY' -and $_.DriverDate -and $_.DriverDate -lt $cutoff } |
+      Select-Object DeviceName, Manufacturer, DriverVersion,
+        @{n='DriverDate';e={ $_.DriverDate.ToString('yyyy-MM-dd') }},
+        @{n='AgeMonths';e={ [math]::Round(((Get-Date) - $_.DriverDate).Days / 30.4, 1) }} |
+      ConvertTo-Json -Compress
+    """
+    raw = run_powershell_stdout(script, timeout=60)
+    old = []
+    if raw:
+        try:
+            data = json.loads(raw)
+            old = data if isinstance(data, list) else [data]
+        except json.JSONDecodeError:
+            pass
+    return {"available": True, "old": old, "count": len(old)}
+
+
+def collect_network_latency() -> dict:
+    """Latency + DNS check — 'internet works' isn't the same as 'internet is good'."""
+    if sys.platform != "win32":
+        return {"available": False}
+
+    script = """
+    $result = [ordered]@{ dns_ms = $null; ping_ms = $null; target = '1.1.1.1' }
+    try {
+      $sw = [System.Diagnostics.Stopwatch]::StartNew()
+      [void][System.Net.Dns]::GetHostAddresses('www.microsoft.com')
+      $sw.Stop()
+      $result.dns_ms = $sw.ElapsedMilliseconds
+    } catch {}
+    try {
+      $p = Test-Connection -ComputerName 1.1.1.1 -Count 3 -ErrorAction Stop |
+        Measure-Object -Property Latency -Average
+      $result.ping_ms = [math]::Round($p.Average, 1)
+    } catch {
+      try {
+        $p = Test-Connection -ComputerName 1.1.1.1 -Count 3 -ErrorAction Stop |
+          Measure-Object -Property ResponseTime -Average
+        $result.ping_ms = [math]::Round($p.Average, 1)
+      } catch {}
+    }
+    $result | ConvertTo-Json -Compress
+    """
+    raw = run_powershell_stdout(script, timeout=45)
+    if not raw:
+        return {"available": False}
+    try:
+        return {"available": True, **json.loads(raw)}
+    except json.JSONDecodeError:
+        return {"available": False}

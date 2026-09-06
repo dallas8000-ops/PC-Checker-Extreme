@@ -67,6 +67,11 @@ hidden = (
         "wmi",
         "win32timezone",  # commonly needed by pywin32 even when not imported directly
     ]
+    # xhtml2pdf dynamically imports reportlab/svglib submodules at runtime,
+    # so PyInstaller's static analysis misses them -- collect recursively.
+    + collect_submodules("xhtml2pdf")
+    + collect_submodules("reportlab")
+    + collect_submodules("svglib")
     # sentry_sdk's integrations (django, logging, stdlib, excepthook, ...) are
     # loaded dynamically by name at sentry_sdk.init() time, so PyInstaller's
     # static analyzer never sees the import and silently drops them otherwise.
@@ -78,6 +83,7 @@ datas = (
     collect_data_files("diagnostics")
     + collect_data_files("pc_checker_extreme")
     + collect_data_files("sentry_sdk")
+    + collect_data_files("reportlab")
     + collect_data_files("certifi")
     + [(os.path.join(PROJECT_ROOT, "manage.py"), ".")]
 )
