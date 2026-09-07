@@ -130,7 +130,11 @@ def stripe_me(request):
 
 
 STRIPE_TIERS = [
-    {"key": "openai-model", "tier": "`OPENAI_MODEL`", "price_id": "price_1ThOUURxznXvj6jhTC3mbWmk", "label": "$4.00/month"},
+    # price_1ThOU...mbWmk (the old value here) is a LIVE-mode price — it doesn't
+    # exist in test mode at all, and its "`OPENAI_MODEL`" name/key look like an
+    # unrelated boilerplate leftover, not something created for this app. Swapped
+    # for a real test-mode price created for PC Checker Extreme specifically.
+    {"key": "pro", "tier": "Pro", "price_id": "price_1UCqC6RxznXvj6jhaR2VFulC", "label": "$4.00/month"},
 ]
 
 
