@@ -11,32 +11,119 @@
 {% endblock %}
 
 {% block content %}
-<section class="card auth-shell auth-card">
-  <header class="panel-head">
-    <span class="panel-tag">WELCOME//LANDING</span>
-    <h1>PC Checker Extreme</h1>
-  </header>
-  <p class="panel-desc">
-    Fleet-ready PC diagnostics platform with private accounts, report history, and OEM/component support link intelligence.
-  </p>
-  <div class="scan-form" style="gap:0.75rem;">
-    {% if request.user.is_authenticated %}
-    <a href="{% url 'diagnostics:home' %}" class="btn-hud btn-hud-magenta btn-hud-lg">OPEN DASHBOARD</a>
-    <form action="{% url 'diagnostics:logout' %}" method="post" class="inline-form">
-      {% csrf_token %}
-      <button type="submit" class="btn-hud btn-hud-lg">LOG OUT</button>
-    </form>
-    {% else %}
-    <a href="{% url 'diagnostics:signup' %}" class="btn-hud btn-hud-magenta btn-hud-lg">CREATE ACCOUNT</a>
-    <a href="{% url 'diagnostics:login' %}" class="btn-hud btn-hud-lg">LOG IN</a>
-    {% endif %}
+<section class="landing-hero">
+  <div class="hero-copy">
+    <span class="eyebrow">PRIVATE WINDOWS DIAGNOSTICS</span>
+    <h1>Know exactly what is slowing down every PC before it costs you time.</h1>
+    <p>
+      PC Checker Extreme gives IT teams and professionals a clean, private command center for hardware health, software drift, update gaps, and AI-guided remediation.
+    </p>
+    <div class="cta-row">
+      {% if request.user.is_authenticated %}
+      <a href="{% url 'diagnostics:home' %}" class="btn-hud btn-hud-magenta btn-hud-lg">OPEN DASHBOARD</a>
+      <form action="{% url 'diagnostics:logout' %}" method="post" class="inline-form">
+        {% csrf_token %}
+        <button type="submit" class="btn-hud btn-hud-lg">LOG OUT</button>
+      </form>
+      {% else %}
+      <a href="{% url 'diagnostics:signup' %}" class="btn-hud btn-hud-magenta btn-hud-lg">CREATE ACCOUNT</a>
+      <a href="{% url 'diagnostics:login' %}" class="btn-hud btn-hud-lg">LOG IN</a>
+      {% endif %}
+    </div>
+    <ul class="trust-list">
+      <li>WMI system fingerprinting</li>
+      <li>Private account history</li>
+      <li>AI review + next actions</li>
+    </ul>
   </div>
-  <p class="panel-hint">
-    {% if request.user.is_authenticated %}
-    Signed in as <strong>{{ request.user.username }}</strong>. Your command center is at <strong>/app/</strong>.
-    {% else %}
-    After login, your dashboard is at <strong>/app/</strong>. API health remains at <strong>/api/health/</strong>.
-    {% endif %}
-  </p>
+
+  <div class="hero-panel">
+    <div class="panel-score">
+      <div class="panel-score-ring">LIVE</div>
+      <div>
+        <span class="mini-label">SYSTEM STATUS</span>
+        <strong>Scan-ready</strong>
+      </div>
+    </div>
+    <div class="hero-minor-grid">
+      <div>
+        <span class="mini-label">WMI</span>
+        <strong>On</strong>
+      </div>
+      <div>
+        <span class="mini-label">winget</span>
+        <strong>Ready</strong>
+      </div>
+      <div>
+        <span class="mini-label">AI</span>
+        <strong>Enabled</strong>
+      </div>
+      <div>
+        <span class="mini-label">MODE</span>
+        <strong>Local</strong>
+      </div>
+    </div>
+    <div class="hero-warning">
+      <span class="warning-tag">READY</span>
+      <p>Run a local Windows scan to inspect hardware, update posture, and generate a report for the active machine.</p>
+    </div>
+  </div>
 </section>
+
+<section class="feature-showcase">
+  <div class="section-head">
+    <span class="eyebrow">WHY TEAMS USE IT</span>
+    <h2>Built to surface real problems before they become outages.</h2>
+  </div>
+
+  <div class="showcase-grid">
+    <article class="feature-card">
+      <span class="feature-icon">01</span>
+      <h3>Deep hardware visibility</h3>
+      <p>Capture motherboard, BIOS, memory, storage, CPU, and device health directly from Windows system data.</p>
+    </article>
+    <article class="feature-card">
+      <span class="feature-icon">02</span>
+      <h3>Clean decision support</h3>
+      <p>Review risk, outdated apps, startup bloat, and update posture in a single, readable scorecard.</p>
+    </article>
+    <article class="feature-card">
+      <span class="feature-icon">03</span>
+      <h3>AI-backed next steps</h3>
+      <p>Get plain-English explanations and suggested fixes without digging through raw telemetry.</p>
+    </article>
+    <article class="feature-card">
+      <span class="feature-icon">04</span>
+      <h3>Private-by-default workflow</h3>
+      <p>Each account keeps its own scan history, reports, and comparisons in a secure, client-scoped workspace.</p>
+    </article>
+  </div>
+</section>
+
+<section class="proof-strip">
+  <div>
+    <strong>WMI</strong>
+    <span>System profiling</span>
+  </div>
+  <div>
+    <strong>winget</strong>
+    <span>Update detection</span>
+  </div>
+  <div>
+    <strong>AI</strong>
+    <span>Report summaries</span>
+  </div>
+  <div>
+    <strong>Private</strong>
+    <span>Account-scoped history</span>
+  </div>
+</section>
+
+<p class="panel-hint landing-footnote">
+  {% if request.user.is_authenticated %}
+  Signed in as <strong>{{ request.user.username }}</strong>. Your command center is at <strong>/app/</strong>.
+  {% else %}
+  After login, your dashboard is at <strong>/app/</strong>. API health remains at <strong>/api/health/</strong>.
+  {% endif %}
+</p>
 {% endblock %}

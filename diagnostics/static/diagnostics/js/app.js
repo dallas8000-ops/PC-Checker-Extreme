@@ -1,4 +1,13 @@
 (function () {
+  function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) {
+      return parts.pop().split(";").shift();
+    }
+    return "";
+  }
+
   const scanForm = document.getElementById("scan-form");
   if (scanForm) {
     const stages = [
@@ -113,6 +122,46 @@
       const chevron = toggle.querySelector(".chevron");
       if (body) body.classList.toggle("hidden", expanded);
       if (chevron) chevron.textContent = expanded ? "+" : "−";
+    });
+  });
+
+  document.querySelectorAll(".btn-fix").forEach(function (button) {
+    button.addEventListener("click", async function () {
+      const fixId = button.getAttribute("data-fix-id");
+      const resultEl = button.parentElement?.querySelector(".fix-result");
+      if (!fixId || !resultEl) return;
+
+      button.disabled = true;
+      resultEl.textContent = "Running fix…";
+      resultEl.classList.remove("error");
+
+      try {
+        const csrfToken = getCookie("csrftoken");
+        const response = await fetch("/api/fix/", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            ...(csrfToken ? { "X-CSRFToken": csrfToken } : {}),
+          },
+          body: JSON.stringify({ fix_id: fixId }),
+        });
+
+        const data = await response.json().catch(function () {
+          return {};
+        });
+
+        if (!response.ok) {
+          throw new Error(data.error || data.message || "Fix could not be completed.");
+        }
+
+        resultEl.textContent = data.message || "Fix completed.";
+        button.textContent = "Fix applied";
+      } catch (error) {
+        resultEl.textContent = error.message || "Fix failed.";
+        resultEl.classList.add("error");
+        button.disabled = false;
+      }
     });
   });
 })();

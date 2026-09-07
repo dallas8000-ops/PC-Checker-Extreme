@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from django.test import SimpleTestCase
 
 from .services.health_checks import run_health_checks
@@ -52,3 +54,13 @@ class CleanupHealthTests(SimpleTestCase):
 
         commands = build_command_playbook({"cleanup": cleanup, "hardware": {"live_metrics": {}}})
         self.assertTrue(any(command["category"] == "cleanup" for command in commands))
+
+
+class RemediationUiTests(SimpleTestCase):
+    def test_fix_buttons_post_to_remediation_api(self):
+        js_path = Path(__file__).resolve().parent / "static" / "diagnostics" / "js" / "app.js"
+        js = js_path.read_text(encoding="utf-8")
+
+        self.assertIn("btn-fix", js)
+        self.assertIn('fetch("/api/fix/"', js)
+        self.assertIn("data-fix-id", js)
