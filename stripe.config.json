@@ -1,0 +1,38 @@
+{
+  "appUrl": "https://pc-checker-extreme-production.up.railway.app",
+  "provision": {
+    "reuseExisting": true,
+    "createWebhook": true,
+    "createPortal": true
+  },
+  "tiers": [
+    {
+      "name": "PC Checker Extreme Pro",
+      "description": "Windows diagnostic intelligence: hardware, security, reliability, event-log, update, and health signals in one AI-explained report.",
+      "amount": 799,
+      "currency": "usd",
+      "interval": "month",
+      "trialDays": 0,
+      "features": [
+        "Live hardware, SMART, thermal, and reliability diagnostics",
+        "AI-explained findings with prioritized fix steps",
+        "Scan history, compare, and scan chat",
+        "OEM-first driver and support guidance"
+      ]
+    },
+    {
+      "name": "PC Checker Extreme Pro",
+      "description": "Windows diagnostic intelligence: hardware, security, reliability, event-log, update, and health signals in one AI-explained report.",
+      "amount": 6900,
+      "currency": "usd",
+      "interval": "year",
+      "trialDays": 0,
+      "features": [
+        "Live hardware, SMART, thermal, and reliability diagnostics",
+        "AI-explained findings with prioritized fix steps",
+        "Scan history, compare, and scan chat",
+        "OEM-first driver and support guidance"
+      ]
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import inspect
 import os
 from unittest.mock import patch
 
@@ -13,6 +14,10 @@ from . import views
 
 urlpatterns = [
     path("stripe/portal/", views.portal, name="stripe-portal"),
+    path("stripe/pricing/", views.pricing, name="stripe-pricing"),
+    path("stripe/checkout/", views.checkout, name="stripe-checkout"),
+    path("stripe/success/", views.success, name="stripe-success"),
+    path("stripe/account/", views.account, name="stripe-account"),
 ]
 
 
@@ -83,3 +88,48 @@ class PortalIDORTest(TestCase):
             mock_stripe.billing_portal.Session.create.call_args.kwargs["customer"],
             "cus_GUEST_ACCOUNT",
         )
+
+
+class RequireConfiguredGuardTest(TestCase):
+    """Every billing action that talks to Stripe must fail closed when
+    STRIPE_SECRET_KEY is absent. This guards against a future view (or an
+    edit to an existing one) silently dropping the client.require_configured()
+    call — the exact regression that let this app hit Stripe with an unset key.
+    """
+
+    GUARDED_VIEWS = ("checkout", "portal", "webhook")
+
+    def test_every_billing_action_calls_require_configured(self):
+        source = inspect.getsource(views)
+        for name in self.GUARDED_VIEWS:
+            func_source = inspect.getsource(getattr(views, name))
+            self.assertIn(
+                "client.require_configured()",
+                func_source,
+                f"stripe.views.{name} no longer guards on client.require_configured()",
+            )
+        self.assertGreaterEqual(source.count("client.require_configured()"), len(self.GUARDED_VIEWS))
+
+
+@override_settings(ROOT_URLCONF="stripe.tests")
+class BillingPageRenderTest(TestCase):
+    """Regression guard for the pricing page being static HTML disconnected
+    from STRIPE_TIERS: this failed silently in production because nothing
+    asserted that every configured tier actually renders on the page.
+    """
+
+    def test_pricing_renders_every_configured_tier(self):
+        response = self.client.get("/stripe/pricing/")
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        for tier in views.STRIPE_TIERS:
+            self.assertIn(tier["price_id"], body)
+            self.assertIn(tier["label"], body)
+
+    def test_success_page_renders_for_guest(self):
+        response = self.client.get("/stripe/success/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_account_page_renders_for_guest(self):
+        response = self.client.get("/stripe/account/")
+        self.assertEqual(response.status_code, 200)

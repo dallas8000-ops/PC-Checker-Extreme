@@ -7,10 +7,8 @@ from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from . import client  # noqa: F401 — configures stripe.api_key
+from . import client
 from .webhook_handlers import dispatch_stripe_event
-
-# `OPENAI_MODEL`: price_1ThOUURxznXvj6jhTC3mbWmk
 
 
 def _post_value(request, key):
@@ -25,6 +23,11 @@ def _post_value(request, key):
 @csrf_exempt
 @require_POST
 def webhook(request):
+    try:
+        client.require_configured()
+    except RuntimeError as exc:
+        return JsonResponse({"error": str(exc)}, status=503)
+
     payload = request.body
     sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
     secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
@@ -48,6 +51,11 @@ def webhook(request):
 
 @require_POST
 def checkout(request):
+    try:
+        client.require_configured()
+    except RuntimeError as exc:
+        return JsonResponse({"error": str(exc)}, status=503)
+
     price_id = _post_value(request, "priceId")
     if not price_id:
         return JsonResponse({"error": "priceId required"}, status=400)
@@ -68,6 +76,11 @@ def checkout(request):
 
 @require_POST
 def portal(request):
+    try:
+        client.require_configured()
+    except RuntimeError as exc:
+        return JsonResponse({"error": str(exc)}, status=503)
+
     # Never trust a client-supplied customerId here (IDOR: anyone could POST an
     # arbitrary cus_... and get a live billing-portal session for someone else's
     # account — same class of bug already fixed in Deployment-Stripe-center).
@@ -129,12 +142,14 @@ def stripe_me(request):
     return JsonResponse(payload)
 
 
+# Test-mode prices under product "PC Checker Extreme Pro" (prod_VDGjqXoK5NfkAK).
+# Repriced per the diagnostic-tool competitive/cost-basis analysis (AIDA64/HWiNFO/
+# Speccy comparables + real OpenAI token cost). When cutting over to a live
+# STRIPE_SECRET_KEY (sk_live_...), create the mirror-image product/prices in
+# Stripe's LIVE dashboard and swap these two price_ids for the live ones.
 STRIPE_TIERS = [
-    # price_1ThOU...mbWmk (the old value here) is a LIVE-mode price — it doesn't
-    # exist in test mode at all, and its "`OPENAI_MODEL`" name/key look like an
-    # unrelated boilerplate leftover, not something created for this app. Swapped
-    # for a real test-mode price created for PC Checker Extreme specifically.
-    {"key": "pro", "tier": "Pro", "price_id": "price_1UCqC6RxznXvj6jhaR2VFulC", "label": "$4.00/month"},
+    {"key": "pro_monthly", "tier": "Pro (Monthly)", "price_id": "price_1UD6FoRxznXvj6jhZyk0Q2qp", "label": "$7.99/month"},
+    {"key": "pro_annual", "tier": "Pro (Annual)", "price_id": "price_1UD6FqRxznXvj6jhdvvhg0VS", "label": "$69.00/year"},
 ]
 
 
