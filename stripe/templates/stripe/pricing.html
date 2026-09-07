@@ -17,14 +17,17 @@
   <h1>Choose your plan</h1>
   <p>Simple, transparent pricing — server-rendered for SEO.</p>
   <div class="grid">
+    {% for tier in tiers %}
     <article class="tier-card">
-      <h2>`OPENAI_MODEL`</h2>
-      <p class="price">$4.00/month</p>
+      <h2>{{ tier.tier }}</h2>
+      <p class="price">{{ tier.label }}</p>
       <form method="post" action="{% url 'stripe-checkout' %}">
-{% csrf_token %}        <input type="hidden" name="priceId" value="price_1ThOUURxznXvj6jhTC3mbWmk" />
+        {% csrf_token %}
+        <input type="hidden" name="priceId" value="{{ tier.price_id }}" />
         <button type="submit">Subscribe</button>
       </form>
     </article>
+    {% endfor %}
   </div>
 </body>
 </html>
