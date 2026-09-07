@@ -18,10 +18,11 @@ urlpatterns = [
     path("stripe/checkout/", views.checkout, name="stripe-checkout"),
     path("stripe/success/", views.success, name="stripe-success"),
     path("stripe/account/", views.account, name="stripe-account"),
+    path("stripe/webhook/", views.webhook, name="stripe-webhook"),
 ]
 
 
-@override_settings(ROOT_URLCONF="stripe.tests")
+@override_settings(ROOT_URLCONF="billing.tests")
 class PortalIDORTest(TestCase):
     def setUp(self):
         self.attacker = get_user_model().objects.create_user(
@@ -31,8 +32,8 @@ class PortalIDORTest(TestCase):
         self.client = Client()
         self.client.force_login(self.attacker)
 
-    @patch("stripe.views.stripe")
-    @patch("stripe.db.get_stripe_customer_for_user", return_value=None)
+    @patch("billing.views.stripe")
+    @patch("billing.db.get_stripe_customer_for_user", return_value=None)
     def test_spoofed_customer_id_is_ignored(self, mock_lookup, mock_stripe):
         response = self.client.post(
             "/stripe/portal/",
@@ -47,8 +48,8 @@ class PortalIDORTest(TestCase):
         mock_lookup.assert_called_once_with(self.attacker.pk)
         mock_stripe.billing_portal.Session.create.assert_not_called()
 
-    @patch("stripe.views.stripe")
-    @patch("stripe.db.get_stripe_customer_for_user", return_value="cus_OWNER_ACCOUNT")
+    @patch("billing.views.stripe")
+    @patch("billing.db.get_stripe_customer_for_user", return_value="cus_OWNER_ACCOUNT")
     def test_authenticated_user_uses_only_its_server_linked_customer(
         self,
         mock_lookup,
@@ -70,7 +71,7 @@ class PortalIDORTest(TestCase):
             "cus_OWNER_ACCOUNT",
         )
 
-    @patch("stripe.views.stripe")
+    @patch("billing.views.stripe")
     def test_guest_uses_only_customer_from_its_session(self, mock_stripe):
         mock_stripe.billing_portal.Session.create.return_value.url = "https://billing.stripe.test/session"
         guest = Client()
@@ -88,7 +89,6 @@ class PortalIDORTest(TestCase):
             mock_stripe.billing_portal.Session.create.call_args.kwargs["customer"],
             "cus_GUEST_ACCOUNT",
         )
-
 
 class RequireConfiguredGuardTest(TestCase):
     """Every billing action that talks to Stripe must fail closed when
@@ -111,7 +111,7 @@ class RequireConfiguredGuardTest(TestCase):
         self.assertGreaterEqual(source.count("client.require_configured()"), len(self.GUARDED_VIEWS))
 
 
-@override_settings(ROOT_URLCONF="stripe.tests")
+@override_settings(ROOT_URLCONF="billing.tests")
 class BillingPageRenderTest(TestCase):
     """Regression guard for the pricing page being static HTML disconnected
     from STRIPE_TIERS: this failed silently in production because nothing
@@ -133,3 +133,14 @@ class BillingPageRenderTest(TestCase):
     def test_account_page_renders_for_guest(self):
         response = self.client.get("/stripe/account/")
         self.assertEqual(response.status_code, 200)
+
+
+class RequireConfiguredInvocationTest(TestCase):
+    @patch("billing.views.client.require_configured")
+    def test_stripe_endpoints_require_server_key_configuration(self, mock_require_configured):
+        guest = Client()
+        guest.post("/stripe/checkout", {})
+        guest.post("/stripe/portal", {})
+        guest.post("/stripe/webhook", {})
+
+        self.assertEqual(mock_require_configured.call_count, 3)
