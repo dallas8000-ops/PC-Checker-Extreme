@@ -142,14 +142,12 @@ def stripe_me(request):
     return JsonResponse(payload)
 
 
-# Test-mode prices under product "PC Checker Extreme Pro" (prod_VDGjqXoK5NfkAK).
+# Live-mode prices under product "PC Checker Extreme Pro" (prod_VDqXvc1f75cU2X).
 # Repriced per the diagnostic-tool competitive/cost-basis analysis (AIDA64/HWiNFO/
-# Speccy comparables + real OpenAI token cost). When cutting over to a live
-# STRIPE_SECRET_KEY (sk_live_...), create the mirror-image product/prices in
-# Stripe's LIVE dashboard and swap these two price_ids for the live ones.
+# Speccy comparables + real OpenAI token cost).
 STRIPE_TIERS = [
-    {"key": "pro_monthly", "tier": "Pro (Monthly)", "price_id": "price_1UD6FoRxznXvj6jhZyk0Q2qp", "label": "$7.99/month"},
-    {"key": "pro_annual", "tier": "Pro (Annual)", "price_id": "price_1UD6FqRxznXvj6jhdvvhg0VS", "label": "$69.00/year"},
+    {"key": "pro_monthly", "tier": "Pro (Monthly)", "price_id": "price_1UDOpyRxznXvj6jh7CYKYnSq", "label": "$7.99/month"},
+    {"key": "pro_annual", "tier": "Pro (Annual)", "price_id": "price_1UDOpyRxznXvj6jh2SOWq8gC", "label": "$69.00/year"},
 ]
 
 
