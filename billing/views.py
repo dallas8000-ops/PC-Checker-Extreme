@@ -4,6 +4,7 @@ import os
 import stripe
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
@@ -63,14 +64,34 @@ def checkout(request):
     user_id = None
     if getattr(request, "user", None) and request.user.is_authenticated:
         user_id = str(request.user.pk)
-    session = stripe.checkout.Session.create(
-        mode="subscription",
-        customer_email=_post_value(request, "customerEmail") or getattr(request.user, "email", None),
-        client_reference_id=user_id,
-        line_items=[{"price": price_id, "quantity": 1}],
-        success_url=f"{app_url}/stripe/success/?session_id=",
-        cancel_url=f"{app_url}/stripe/pricing/",
-    )
+    # Two independent bugs fixed here, both live in production before this change:
+    # (1) billing/urls.py registers these routes WITHOUT trailing slashes
+    #     ("pricing", "success", "account"), but these were hardcoded WITH a
+    #     trailing slash ("/stripe/success/") -- every real checkout redirected
+    #     a paying customer straight into a 404 instead of the success page.
+    #     Building from reverse() instead of a copy-pasted string means it can't
+    #     drift out of sync with the actual routing table again.
+    # (2) success_url never contained Stripe's "{CHECKOUT_SESSION_ID}" template
+    #     token, so "?session_id=" was always sent to Stripe verbatim and
+    #     redirected back with an EMPTY session_id -- success() below silently
+    #     failed to resolve the session and never linked the paying customer's
+    #     stripe_customer_id into their browser session.
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer_email=_post_value(request, "customerEmail") or getattr(request.user, "email", None),
+            client_reference_id=user_id,
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=f"{app_url}{reverse('stripe-success')}?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{app_url}{reverse('stripe-pricing')}",
+        )
+    except stripe.error.StripeError as exc:
+        # Uncaught before this fix: any Stripe-side failure here (e.g. a price_id
+        # that doesn't exist under the currently configured key's mode -- live vs
+        # test -- or a transient API error) propagated as an unhandled exception
+        # straight to a Django 500 for the customer instead of a clean response.
+        print(f"[stripe] Checkout session creation failed: {exc}")
+        return JsonResponse({"error": "Unable to start checkout. Please try again shortly."}, status=502)
     return redirect(session.url)
 
 
@@ -83,7 +104,7 @@ def portal(request):
 
     # Never trust a client-supplied customerId here (IDOR: anyone could POST an
     # arbitrary cus_... and get a live billing-portal session for someone else's
-    # account — same class of bug already fixed in Deployment-Stripe-center).
+    # account -- same class of bug already fixed in Deployment-Stripe-center).
     # Resolve the customer purely server-side: DB link for authenticated users,
     # else the session value set exclusively by our own success() handler.
     customer_id = None
@@ -95,10 +116,14 @@ def portal(request):
     if not customer_id:
         return JsonResponse({"error": "No Stripe customer linked to this account/session"}, status=400)
     app_url = os.environ.get("APP_URL", "https://pc-checker-extreme-production.up.railway.app")
-    session = stripe.billing_portal.Session.create(
-        customer=customer_id,
-        return_url=f"{app_url}/stripe/account/",
-    )
+    try:
+        session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=f"{app_url}{reverse('stripe-account')}",
+        )
+    except stripe.error.StripeError as exc:
+        print(f"[stripe] Portal session creation failed: {exc}")
+        return JsonResponse({"error": "Unable to open billing portal. Please try again shortly."}, status=502)
     return redirect(session.url)
 
 
