@@ -2,6 +2,7 @@ import inspect
 import os
 from unittest.mock import patch
 
+import stripe
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
@@ -190,3 +191,40 @@ class CheckoutRedirectUrlTest(TestCase):
 
         kwargs = mock_stripe.billing_portal.Session.create.call_args.kwargs
         self.assertEqual(kwargs["return_url"], f"{self.EXPECTED_APP_URL}{reverse('stripe-account')}")
+
+
+class StripeApiFailureTest(TestCase):
+    """Regression test: before this fix, checkout()/portal() had no exception
+    handling around the Stripe API call itself (only around the
+    require_configured() guard) -- a Stripe-side failure (e.g. a price_id that
+    doesn't exist under the deployed key's mode, or any transient API error)
+    propagated as an unhandled exception straight to a Django 500 instead of a
+    clean error response.
+    """
+
+    @patch("billing.views.stripe")
+    def test_checkout_returns_clean_error_on_stripe_failure(self, mock_stripe):
+        mock_stripe.error.StripeError = stripe.error.StripeError
+        mock_stripe.checkout.Session.create.side_effect = stripe.error.StripeError("No such price")
+
+        response = self.client.post(
+            "/stripe/checkout",
+            {"priceId": "price_1UD6FoRxznXvj6jhZyk0Q2qp", "customerEmail": "buyer@example.com"},
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("error", response.json())
+
+    @patch("billing.views.stripe")
+    @patch("billing.db.get_stripe_customer_for_user", return_value="cus_OWNER_ACCOUNT")
+    def test_portal_returns_clean_error_on_stripe_failure(self, mock_lookup, mock_stripe):
+        mock_stripe.error.StripeError = stripe.error.StripeError
+        mock_stripe.billing_portal.Session.create.side_effect = stripe.error.StripeError("boom")
+        user = get_user_model().objects.create_user(username="buyer2", password="x")
+        client = Client()
+        client.force_login(user)
+
+        response = client.post("/stripe/portal", {})
+
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("error", response.json())
