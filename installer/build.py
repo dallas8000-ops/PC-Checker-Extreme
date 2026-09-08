@@ -38,6 +38,26 @@ PYTHON = sys.executable  # the venv python currently running this script
 APP_VERSION = "1.0.0"
 
 
+def clean_build_outputs():
+    """Remove generated installer outputs before creating a fresh build."""
+    print("\n=== Cleaning previous build outputs ===")
+    paths = [
+        os.path.join(INSTALLER_DIR, "build"),
+        os.path.join(INSTALLER_DIR, "dist"),
+        os.path.join(INSTALLER_DIR, "dist_final"),
+        os.path.join(INSTALLER_DIR, f"PCCheckerExtreme-Installer-v{APP_VERSION}"),
+        os.path.join(INSTALLER_DIR, f"PCCheckerExtreme-Installer-v{APP_VERSION}.zip"),
+        os.path.join(INSTALLER_DIR, "db.sqlite3"),
+    ]
+    for path in paths:
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+            print(f"Removed directory: {path}")
+        elif os.path.isfile(path):
+            os.remove(path)
+            print(f"Removed file: {path}")
+
+
 def run(cmd, cwd=None):
     print(f"\n>>> {' '.join(cmd)}")
     result = subprocess.run(cmd, cwd=cwd or PROJECT_ROOT)
@@ -176,6 +196,7 @@ def assemble_distributable():
 
 
 def main():
+    clean_build_outputs()
     ensure_pyinstaller()
     build_icon()
     collect_static()

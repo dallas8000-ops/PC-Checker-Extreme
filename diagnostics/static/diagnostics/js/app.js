@@ -157,6 +157,10 @@
 
         resultEl.textContent = data.message || "Fix completed.";
         button.textContent = "Fix applied";
+        window.setTimeout(function () {
+          resultEl.textContent = (data.message || "Fix completed.") + " Run a new scan to verify the change.";
+          button.disabled = true;
+        }, 1200);
       } catch (error) {
         resultEl.textContent = error.message || "Fix failed.";
         resultEl.classList.add("error");

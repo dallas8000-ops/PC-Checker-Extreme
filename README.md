@@ -83,6 +83,26 @@ The server runs in the editor's **integrated terminal**, not a separate PowerShe
 
 > **Tip:** run Cursor/VS Code as Administrator for the most complete WMI and update data.
 
+### Make AI review and repairs work
+
+For AI summaries, component reviews, upgrade suggestions, and scan chat, add your
+OpenAI key to `.env` before starting Django:
+
+```env
+OPENAI_API_KEY=your-key-here
+OPENAI_MODEL=gpt-4o-mini
+```
+
+Restart the server after changing `.env`, then start a **new scan**. Existing reports
+keep the result produced when they were created. Never commit `.env` or share its key.
+
+The **Fix it for me** control only appears for changes the app can safely automate.
+Temporary-file cleanup runs directly; Memory Integrity requests Windows UAC elevation
+and needs a reboot; application and driver fixes use `winget` where possible and may
+open Windows Update for confirmation. BIOS, Secure Boot, TPM, hardware failures,
+crashes, and performance bottlenecks require manual action or a new scan to verify.
+Run a new scan after applying a fix because reports are saved snapshots, not live views.
+
 ### Optional: desktop shortcut (no editor)
 
 Double-click **`Launch PC Checker Extreme.vbs`** to start without opening an editor.
@@ -108,6 +128,10 @@ This produces `installer/PCCheckerExtreme-Installer-v1.0.0.zip`. Extract it anyw
 - No admin rights required
 
 **First run:** after installation, use the **Start Menu** shortcut or `PCCheckerExtreme.exe` in the install folder. The browser opens automatically. Navigate to `http://127.0.0.1:8000/accounts/signup/` to create your account on first use (the fresh database has no users).
+
+To enable AI in the installed app, edit `%LOCALAPPDATA%\PC Checker Extreme\.env`, add
+`OPENAI_API_KEY=your-key-here`, restart the app, and run a new scan. Run the app as
+Administrator when Windows asks for elevation or when applying system-level repairs.
 
 **Key fixes bundled in the build:**
 - `BASE_DIR` detection: when frozen, resolves to the exe directory (not `_internal/`) so `db.sqlite3` and `staticfiles/` are found correctly

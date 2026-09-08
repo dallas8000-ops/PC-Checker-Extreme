@@ -145,6 +145,8 @@ def do_install():
         with open(env_path, "w", encoding="utf-8") as f:
             f.write(f"DJANGO_SECRET_KEY={secrets.token_urlsafe(50)}\n")
             f.write("DJANGO_DEBUG=false\n")
+            f.write("# Add OPENAI_API_KEY here to enable AI review and scan chat.\n")
+            f.write("# OPENAI_MODEL=gpt-4o-mini\n")
 
     # Copy this installer into the install folder too, so the registry's
     # UninstallString has something stable to point at even if the customer

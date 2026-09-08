@@ -8,6 +8,8 @@ If Not CreateObject("Scripting.FileSystemObject").FileExists(pythonExe) Then
   WScript.Quit 1
 End If
 
+WshShell.Run "taskkill /IM PCCheckerExtreme.exe /F", 0, True
+
 ' Start Django hidden (window style 0 = no console)
 cmd = "cmd /c cd /d """ & projectDir & """ && """ & pythonExe & """ manage.py runserver 127.0.0.1:8000"
 WshShell.Run cmd, 0, False

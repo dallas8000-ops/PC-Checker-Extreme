@@ -1,9 +1,11 @@
 from pathlib import Path
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
 from .services.health_checks import run_health_checks
 from .services.scan_insights import build_command_playbook
+from .services import remediation
 
 
 class DriverUpdateHealthTests(SimpleTestCase):
@@ -64,3 +66,26 @@ class RemediationUiTests(SimpleTestCase):
         self.assertIn("btn-fix", js)
         self.assertIn('fetch("/api/fix/"', js)
         self.assertIn("data-fix-id", js)
+
+    def test_report_tools_does_not_register_a_second_fix_handler(self):
+        js_path = Path(__file__).resolve().parent / "static" / "diagnostics" / "js" / "report-tools.js"
+        js = js_path.read_text(encoding="utf-8")
+
+        self.assertNotIn('querySelectorAll(".btn-fix")', js)
+        self.assertNotIn('fetch("/api/fix/"', js)
+
+    @patch("diagnostics.services.remediation.run_powershell")
+    @patch("diagnostics.services.remediation._is_admin", return_value=False)
+    @patch("diagnostics.services.remediation.os.remove")
+    @patch("diagnostics.services.remediation.os.path.isfile", return_value=True)
+    def test_memory_integrity_requests_elevation_when_app_is_not_admin(
+        self, _is_file, _remove, _is_admin, run_powershell
+    ):
+        run_powershell.return_value = ("", "", 0)
+
+        with patch("diagnostics.services.remediation.tempfile.mktemp", return_value="C:\\temp\\fix.result"):
+            result = remediation.fix_memory_integrity()
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(run_powershell.called)
+        self.assertIn("Verb RunAs", run_powershell.call_args.args[0])

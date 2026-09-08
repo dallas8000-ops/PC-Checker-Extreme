@@ -6,6 +6,7 @@ if not exist ".venv\Scripts\python.exe" (
   pause
   exit /b 1
 )
+taskkill /IM PCCheckerExtreme.exe /F >nul 2>&1
 start /min "PC Checker Extreme Server" cmd /c ".venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000"
 timeout /t 3 /nobreak >nul
 start "" "http://127.0.0.1:8000/"

@@ -15,6 +15,9 @@ Safety model:
 """
 import os
 import sys
+import base64
+import json
+import tempfile
 
 from .powershell import run_powershell
 
@@ -36,6 +39,30 @@ def _is_admin() -> bool:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except Exception:
         return False
+
+
+def _run_elevated(script: str, timeout: int = 60) -> tuple[bool, str]:
+    """Run a user-confirmed PowerShell operation through a UAC prompt."""
+    marker = tempfile.mktemp(prefix="pcc-fix-", suffix=".result")
+    marker_literal = json.dumps(marker)
+    elevated_script = f"{script}\nSet-Content -LiteralPath {marker_literal} -Value 'ok' -Encoding ASCII"
+    encoded = base64.b64encode(elevated_script.encode("utf-16le")).decode("ascii")
+    launch_script = (
+        "Start-Process powershell.exe -Verb RunAs -Wait "
+        f"-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','{encoded}'"
+    )
+    try:
+        _, err, code = run_powershell(launch_script, timeout=timeout)
+        if code != 0:
+            return False, err or "The elevated operation was cancelled or failed."
+        if os.path.isfile(marker):
+            return True, ""
+        return False, "The elevated operation was cancelled or did not complete."
+    finally:
+        try:
+            os.remove(marker)
+        except OSError:
+            pass
 
 
 def fix_junk_files() -> dict:
@@ -76,22 +103,22 @@ def fix_memory_integrity() -> dict:
     """Enable Memory Integrity (Core Isolation / HVCI). Requires reboot to apply."""
     if sys.platform != "win32":
         return _fail("This fix is only supported on Windows.")
-    if not _is_admin():
-        return _fail(
-            "Enabling Memory Integrity needs administrator rights. "
-            "Relaunch PC Checker Extreme as administrator, or enable it manually in "
-            "Windows Security > Device security > Core isolation.",
-            needs_admin=True,
-        )
     script = r"""
     $path = 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity'
     New-Item -Path $path -Force | Out-Null
     New-ItemProperty -Path $path -Name 'Enabled' -PropertyType DWORD -Value 1 -Force | Out-Null
     (Get-ItemProperty -Path $path -Name 'Enabled').Enabled
     """
-    out, err, code = run_powershell(script, timeout=45)
+    if _is_admin():
+        out, err, code = run_powershell(script, timeout=45)
+    else:
+        elevated, err = _run_elevated(script, timeout=60)
+        out, code = ("1", 0) if elevated else ("", -1)
     if code == -1 or "1" not in (out or ""):
-        return _fail(f"Could not set Memory Integrity: {err or 'unknown error'}")
+        return _fail(
+            f"Could not set Memory Integrity: {err or 'unknown error'}",
+            needs_admin=True,
+        )
     return _ok(
         "Memory Integrity has been enabled. Restart your PC for it to take effect.",
         reboot_required=True,
