@@ -177,7 +177,34 @@ def run_health_checks(hardware: dict, software: dict, cleanup: dict | None = Non
         )
 
     vbs = extended.get("virtualization", {})
-    if vbs.get("available") and vbs.get("memory_integrity") is False:
+    if (
+        vbs.get("available")
+        and vbs.get("memory_integrity") is False
+        and vbs.get("memory_integrity_configured")
+    ):
+        # Turned on but not running: enabling it again would not help.
+        if vbs.get("virtualization_firmware") is False and not vbs.get("hypervisor_present"):
+            checks.append(
+                {
+                    "id": "virtualization_disabled_bios",
+                    "severity": "warning",
+                    "title": "CPU virtualization is off in BIOS, so Memory integrity cannot run",
+                    "message": "Memory integrity is turned on in Windows, but it needs CPU virtualization. "
+                    "Restart into BIOS/UEFI and enable Intel Virtualization Technology (VT-x) "
+                    "(AMD: SVM Mode), then save and restart.",
+                }
+            )
+        else:
+            checks.append(
+                {
+                    "id": "memory_integrity_pending",
+                    "severity": "info",
+                    "title": "Memory integrity is turned on but not running yet",
+                    "message": "Restart your PC to activate it. If it is still not running after a restart, "
+                    "Windows Security > Device security > Core isolation lists the driver blocking it.",
+                }
+            )
+    elif vbs.get("available") and vbs.get("memory_integrity") is False:
         checks.append(
             {
                 "id": "memory_integrity_off",
@@ -199,7 +226,9 @@ def run_health_checks(hardware: dict, software: dict, cleanup: dict | None = Non
                 }
             )
         tpm = sb_tpm.get("tpm", {})
-        if tpm.get("present") and not tpm.get("ready"):
+        # ready is None when it could not be read (no admin rights) -- that is
+        # "unknown", not "not ready", so only flag an explicit False.
+        if tpm.get("present") and tpm.get("ready") is False:
             checks.append(
                 {
                     "id": "tpm_not_ready",

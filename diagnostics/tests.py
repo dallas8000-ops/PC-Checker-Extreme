@@ -153,3 +153,74 @@ class CsrfFailureTests(TestCase):
         response = client.post("/api/tools/run/", data="{}", content_type="application/json")
         self.assertEqual(response.status_code, 403)
         self.assertTrue(response.json()["reload"])
+
+
+class AccuracyRegressionTests(SimpleTestCase):
+    def _check_ids(self, extended):
+        checks = run_health_checks(
+            {"live_metrics": {"memory": {"percent_used": 20}, "disks": []}},
+            {"outdated_winget": {"count": 0}, "windows_updates": {"count": 0}},
+            {"extended": extended},
+        )["checks"]
+        return {c["id"] for c in checks}
+
+    def test_unreadable_tpm_is_not_reported_as_not_ready(self):
+        ids = self._check_ids({"secure_boot_tpm": {"available": True, "tpm": {"present": True, "ready": None}}})
+        self.assertNotIn("tpm_not_ready", ids)
+        ids = self._check_ids({"secure_boot_tpm": {"available": True, "tpm": {"present": True, "ready": False}}})
+        self.assertIn("tpm_not_ready", ids)
+
+    def test_configured_memory_integrity_says_restart_not_enable(self):
+        ids = self._check_ids({"virtualization": {
+            "available": True, "memory_integrity": False, "memory_integrity_configured": True}})
+        self.assertIn("memory_integrity_pending", ids)
+        self.assertNotIn("memory_integrity_off", ids)
+
+    def test_virtualization_off_in_bios_is_named_as_the_cause(self):
+        ids = self._check_ids({"virtualization": {
+            "available": True, "memory_integrity": False, "memory_integrity_configured": True,
+            "virtualization_firmware": False, "hypervisor_present": False}})
+        self.assertIn("virtualization_disabled_bios", ids)
+        self.assertNotIn("memory_integrity_pending", ids)
+
+    def test_startup_only_driver_warnings_on_working_devices_are_info(self):
+        from .services.device_tools import analyze_status
+
+        raw = {
+            "usb": {
+                "problem_devices": [], "controllers": [], "selective_suspend_ac": 0,
+                "events": {"total": 50, "groups": [
+                    {"provider": "Microsoft-Windows-Kernel-PnP", "id": 219, "count": 33,
+                     "startup_count": 33, "device_id": "PCI\\VEN_8086&DEV_1137\\X",
+                     "device_status": "OK", "device_present": True},
+                    {"provider": "Microsoft-Windows-Kernel-PnP", "id": 219, "count": 17,
+                     "startup_count": 17, "device_id": "HID\\VID_0951&PID_16A4\\Y",
+                     "device_status": "OK", "device_present": True},
+                ]},
+            },
+            "storage": {"disks": [], "volumes": [], "events": {"total": 0, "groups": []}},
+            "is_admin": True,
+        }
+        result = analyze_status(raw)
+        self.assertEqual(result["usb"]["event_total"], 50)
+        severities = {f["severity"] for f in result["usb"]["findings"]}
+        self.assertNotIn("warning", severities)
+        self.assertTrue(any("50 startup-only" in f["title"] for f in result["usb"]["findings"]))
+
+    def test_repeated_warning_on_broken_device_is_flagged(self):
+        from .services.device_tools import analyze_status
+
+        raw = {
+            "usb": {
+                "problem_devices": [], "controllers": [], "selective_suspend_ac": 0,
+                "events": {"total": 4, "groups": [
+                    {"provider": "Microsoft-Windows-Kernel-PnP", "id": 219, "count": 4,
+                     "startup_count": 0, "device_id": "USB\\VID_1\\Z",
+                     "device_status": "Error", "device_present": True},
+                ]},
+            },
+            "storage": {"disks": [], "volumes": [], "events": []},
+            "is_admin": True,
+        }
+        findings = analyze_status(raw)["usb"]["findings"]
+        self.assertTrue(any(f["severity"] == "warning" and f["title"].startswith("4 USB") for f in findings))

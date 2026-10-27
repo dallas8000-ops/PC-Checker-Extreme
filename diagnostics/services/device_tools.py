@@ -55,24 +55,58 @@ _STATUS_SCRIPT = r"""
 $ErrorActionPreference = 'SilentlyContinue'
 $since = (Get-Date).AddDays(-14)
 
-function Get-Events($providers, $max) {
-  $out = @()
+# Boot times, so events logged in the first minutes after startup (driver
+# framework not ready yet, Windows retries) can be told apart from real failures.
+$boots = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-Kernel-General'; Id = 12; StartTime = $since.AddDays(-1) } |
+  Select-Object -ExpandProperty TimeCreated | Sort-Object)
+
+function Get-SecondsAfterBoot($t) {
+  $b = $boots | Where-Object { $_ -le $t } | Select-Object -Last 1
+  if ($b) { [int]($t - $b).TotalSeconds } else { $null }
+}
+
+# Every matching event (not just the newest few), grouped by source + id + device
+# so counts are real and repeats collapse into one row.
+function Get-Events($providers) {
+  $all = @()
   foreach ($p in $providers) {
     try {
-      $out += Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = $p; Level = 1,2,3; StartTime = $since } -MaxEvents $max -ErrorAction Stop
+      $all += Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = $p; Level = 1,2,3; StartTime = $since } -MaxEvents 2000 -ErrorAction Stop
     } catch {}
   }
-  $out | Sort-Object TimeCreated -Descending | Select-Object -First $max | ForEach-Object {
-    $msg = ($_.Message -split "`r?`n")[0]
-    if ($msg.Length -gt 220) { $msg = $msg.Substring(0, 220) + '...' }
+  $rows = $all | ForEach-Object {
+    $lines = $_.Message -split "`r?`n" | Where-Object { $_.Trim() }
+    $deviceLine = $lines | Where-Object { $_ -match '^\s*Device:\s*(.+)$' } | Select-Object -First 1
+    $device = if ($deviceLine) { ($deviceLine -replace '^\s*Device:\s*', '').Trim() } else { '' }
     [pscustomobject]@{
-      time = $_.TimeCreated.ToString('yyyy-MM-dd HH:mm')
-      provider = $_.ProviderName
-      id = $_.Id
-      level = $_.LevelDisplayName
-      message = $msg
+      ev = $_; device = $device
+      key = "$($_.ProviderName)|$($_.Id)|$device"
+      first_line = [string]($lines | Select-Object -First 1)
     }
   }
+  $groups = $rows | Group-Object key | ForEach-Object {
+    $events = $_.Group | Sort-Object { $_.ev.TimeCreated } -Descending
+    $latest = $events[0]
+    $afterBoot = @($events | Where-Object { $s = Get-SecondsAfterBoot $_.ev.TimeCreated; $s -ne $null -and $s -le 120 }).Count
+    $dev = $null
+    if ($latest.device) { $dev = Get-PnpDevice -InstanceId $latest.device -ErrorAction SilentlyContinue }
+    $msg = $latest.first_line
+    if ($msg.Length -gt 220) { $msg = $msg.Substring(0, 220) + '...' }
+    [pscustomobject]@{
+      time = $latest.ev.TimeCreated.ToString('yyyy-MM-dd HH:mm')
+      provider = $latest.ev.ProviderName
+      id = $latest.ev.Id
+      level = $latest.ev.LevelDisplayName
+      message = $msg
+      count = $events.Count
+      startup_count = $afterBoot
+      device_id = $latest.device
+      device_name = if ($dev) { $dev.FriendlyName } else { '' }
+      device_status = if ($dev) { [string]$dev.Status } else { '' }
+      device_present = if ($dev) { [bool]$dev.Present } else { $null }
+    }
+  }
+  [pscustomobject]@{ total = @($all).Count; groups = @($groups | Sort-Object time -Descending) }
 }
 
 $problems = Get-CimInstance Win32_PnPEntity | Where-Object { $_.ConfigManagerErrorCode -ne 0 } | ForEach-Object {
@@ -135,13 +169,13 @@ $volumes = Get-Volume | Where-Object { $_.DriveLetter } | Sort-Object DriveLette
     usb_device_count = $usbCount
     selective_suspend_ac = if ($hex.Count -ge 1) { $hex[0] } else { $null }
     selective_suspend_dc = if ($hex.Count -ge 2) { $hex[1] } else { $null }
-    events = @(Get-Events @('Microsoft-Windows-Kernel-PnP','USBHUB3','USBXHCI','Microsoft-Windows-USB-USBHUB3','Microsoft-Windows-USB-USBXHCI') 15)
+    events = Get-Events @('Microsoft-Windows-Kernel-PnP','USBHUB3','USBXHCI','Microsoft-Windows-USB-USBHUB3','Microsoft-Windows-USB-USBXHCI')
   }
   storage = [pscustomobject]@{
     disks = @($disks)
     failure_predict = @($predict)
     volumes = @($volumes)
-    events = @(Get-Events @('disk','Ntfs','Microsoft-Windows-Ntfs','stornvme','storahci','volmgr','iaStorAC','iaStorVD','Microsoft-Windows-StorPort') 20)
+    events = Get-Events @('disk','Ntfs','Microsoft-Windows-Ntfs','stornvme','storahci','volmgr','iaStorAC','iaStorVD','Microsoft-Windows-StorPort')
   }
   is_admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 } | ConvertTo-Json -Depth 5 -Compress
@@ -170,6 +204,34 @@ def _is_usb_device(device: dict) -> bool:
     instance = (device.get("instance_id") or "").upper()
     pnp_class = (device.get("pnp_class") or "").upper()
     return instance.startswith(_USB_ID_PREFIXES) or pnp_class in ("USB", "USBDEVICE", "HIDCLASS")
+
+
+def _event_groups(events) -> list[dict]:
+    """Normalize grouped event output ({total, groups}) or a plain list of events."""
+    if isinstance(events, dict):
+        groups = _as_list(events.get("groups"))
+    else:
+        groups = _as_list(events)
+    for group in groups:
+        group.setdefault("count", 1)
+        group.setdefault("startup_count", 0)
+    return groups
+
+
+def _classify_device_event(group: dict) -> tuple[str, str]:
+    """Decide whether a repeated PnP warning is a real problem or startup noise."""
+    status = (group.get("device_status") or "").upper()
+    present = group.get("device_present")
+    only_at_startup = group["count"] > 0 and group.get("startup_count", 0) >= group["count"]
+    if group.get("device_id") and present and status not in ("OK", ""):
+        return "problem", f"Device status is {group.get('device_status')} right now."
+    if only_at_startup and (status == "OK" or present is False):
+        if present is False:
+            return "startup", "Only at startup; device is not connected now."
+        return "startup", "Only at startup; device is working now."
+    if group.get("device_id") and present is False:
+        return "disconnected", "Device is not connected now."
+    return "problem", ""
 
 
 def _finding(severity: str, title: str, message: str, tool: str = "") -> dict:
@@ -220,13 +282,29 @@ def analyze_status(raw: dict) -> dict:
                 "usb_power_fix",
             )
         )
-    usb_events = _as_list(usb.get("events"))
-    if usb_events:
+    usb_events = _event_groups(usb.get("events"))
+    for group in usb_events:
+        group["verdict"], group["note"] = _classify_device_event(group)
+    real = [g for g in usb_events if g["verdict"] == "problem"]
+    benign = [g for g in usb_events if g["verdict"] != "problem"]
+    if real:
         usb_findings.append(
             _finding(
-                "warning" if len(usb_events) >= 5 else "info",
-                f"{len(usb_events)} USB/Plug-and-Play warning(s) in the last 14 days",
-                "See the event list below for which device or driver failed.",
+                "warning",
+                f"{sum(g['count'] for g in real)} USB/Plug-and-Play warning(s) for "
+                f"{len(real)} device(s) in the last 14 days",
+                "These happened outside of startup or the device still has a problem now. "
+                "See the event list below.",
+                "usb_restart_problem",
+            )
+        )
+    if benign:
+        usb_findings.append(
+            _finding(
+                "info",
+                f"{sum(g['count'] for g in benign)} startup-only driver warning(s) — devices working",
+                "Logged in the first seconds after Windows starts, before the driver framework is "
+                "ready. Windows retries and the devices load normally, so no action is needed.",
             )
         )
     if not usb_findings:
@@ -298,7 +376,7 @@ def analyze_status(raw: dict) -> dict:
                 )
             )
 
-    disk_events = _as_list(storage.get("events"))
+    disk_events = _event_groups(storage.get("events"))
     for event in disk_events:
         hint = _DISK_EVENT_HINTS.get(event.get("id"))
         if hint and event.get("provider", "").lower() in ("disk", "ntfs", "microsoft-windows-ntfs", "stornvme", "storahci", "iastorac", "iastorvd"):
@@ -309,7 +387,7 @@ def analyze_status(raw: dict) -> dict:
         disk_findings.append(
             _finding(
                 worst,
-                f"{len(flagged)} disk error event(s) in the last 14 days",
+                f"{sum(e['count'] for e in flagged)} disk error event(s) in the last 14 days",
                 "; ".join(sorted({e["hint"] for e in flagged})),
                 "disk_scan",
             )
@@ -330,8 +408,10 @@ def analyze_status(raw: dict) -> dict:
         )
 
     return {
-        "usb": {**usb, "problem_devices": usb_problems, "events": usb_events, "findings": usb_findings},
-        "storage": {**storage, "disks": disks, "events": disk_events, "findings": disk_findings},
+        "usb": {**usb, "problem_devices": usb_problems, "events": usb_events,
+                "event_total": sum(g["count"] for g in usb_events), "findings": usb_findings},
+        "storage": {**storage, "disks": disks, "events": disk_events,
+                    "event_total": sum(e["count"] for e in disk_events), "findings": disk_findings},
         "other_problem_devices": other_problems,
         "is_admin": bool(raw.get("is_admin")),
     }

@@ -305,6 +305,9 @@ def collect_virtualization_security() -> dict:
       @{
         available = $true
         memory_integrity = ($dg.SecurityServicesRunning -contains 2)
+        memory_integrity_configured = ($dg.SecurityServicesConfigured -contains 2)
+        virtualization_firmware = [bool]((Get-CimInstance Win32_Processor | Select-Object -First 1).VirtualizationFirmwareEnabled)
+        hypervisor_present = [bool](Get-CimInstance Win32_ComputerSystem).HypervisorPresent
         vbs_running = ($dg.VirtualizationBasedSecurityStatus -eq 2)
         secure_boot_on = $false
       } | ConvertTo-Json -Compress
@@ -330,18 +333,23 @@ def collect_secure_boot_tpm() -> dict:
     $sb = $null
     try { $sb = Confirm-SecureBootUEFI } catch {}
     $tpm = $null
+    # Get-Tpm needs admin; without it the fields come back empty (not $false),
+    # so report them as unknown and fall back to the TPM device's PnP status.
+    $pnp = Get-PnpDevice -Class SecurityDevices -PresentOnly -ErrorAction SilentlyContinue |
+      Where-Object { $_.FriendlyName -match 'Trusted Platform Module' } | Select-Object -First 1
     try {
       $t = Get-Tpm -ErrorAction Stop
       $tpm = @{
-        present = $true
+        present = [bool]($t.TpmPresent -or $pnp)
         ready = $t.TpmReady
         enabled = $t.TpmEnabled
         activated = $t.TpmActivated
         owned = $t.TpmOwned
       }
     } catch {
-      $tpm = @{ present = $false }
+      $tpm = @{ present = [bool]$pnp; ready = $null }
     }
+    $tpm.device_status = if ($pnp) { [string]$pnp.Status } else { $null }
     $spec = $null
     try {
       $spec = (Get-CimInstance -Namespace root\\cimv2\\security\\microsofttpm -ClassName Win32_Tpm -ErrorAction Stop).SpecVersion

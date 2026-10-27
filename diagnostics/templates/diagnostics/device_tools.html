@@ -47,7 +47,7 @@
   </div>
 
   <p class="panel-hint">
-    {{ status.usb.usb_device_count }} USB device(s) connected ·
+    {{ status.usb.usb_device_count }} USB device entries connected (including hubs and multi-function parts) ·
     {{ status.usb.controllers|length }} USB controller(s) ·
     selective suspend {% if status.usb.selective_suspend_ac == 1 %}ON{% elif status.usb.selective_suspend_ac == 0 %}OFF{% else %}unknown{% endif %}
   </p>
@@ -65,12 +65,18 @@
   {% endif %}
 
   {% if status.usb.events %}
-  <h3>Recent USB / Plug-and-Play warnings</h3>
+  <h3>USB / Plug-and-Play warnings, last 14 days ({{ status.usb.event_total }} total)</h3>
   <table class="component-table event-log-table">
-    <thead><tr><th>When</th><th>Source</th><th>ID</th><th>Message</th></tr></thead>
+    <thead><tr><th>Last seen</th><th>Times</th><th>Device</th><th>Message</th><th>Verdict</th></tr></thead>
     <tbody>
       {% for e in status.usb.events %}
-      <tr><td>{{ e.time }}</td><td>{{ e.provider }}</td><td>{{ e.id }}</td><td>{{ e.message }}</td></tr>
+      <tr>
+        <td>{{ e.time }}</td>
+        <td>{{ e.count }}{% if e.startup_count %}<br><small class="muted">{{ e.startup_count }} at startup</small>{% endif %}</td>
+        <td>{{ e.device_name|default:"—" }}{% if e.device_status %}<br><small class="muted">status {{ e.device_status }}{% if e.device_present is False %}, not connected{% endif %}</small>{% endif %}</td>
+        <td>{{ e.message }}<br><small class="muted">{{ e.provider }} · event {{ e.id }}</small></td>
+        <td>{% if e.verdict == "problem" %}<strong>Needs attention</strong>{% else %}OK{% endif %}{% if e.note %}<br><small class="muted">{{ e.note }}</small>{% endif %}</td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
@@ -129,12 +135,12 @@
   </table>
 
   {% if status.storage.events %}
-  <h3>Recent disk / file-system warnings</h3>
+  <h3>Disk / file-system warnings, last 14 days ({{ status.storage.event_total }} total)</h3>
   <table class="component-table event-log-table">
-    <thead><tr><th>When</th><th>Source</th><th>ID</th><th>Message</th></tr></thead>
+    <thead><tr><th>Last seen</th><th>Times</th><th>Source</th><th>Message</th></tr></thead>
     <tbody>
       {% for e in status.storage.events %}
-      <tr><td>{{ e.time }}</td><td>{{ e.provider }}</td><td>{{ e.id }}</td><td>{% if e.hint %}<strong>{{ e.hint }}</strong><br>{% endif %}{{ e.message }}</td></tr>
+      <tr><td>{{ e.time }}</td><td>{{ e.count }}</td><td>{{ e.provider }} · event {{ e.id }}</td><td>{% if e.hint %}<strong>{{ e.hint }}</strong><br>{% endif %}{{ e.message }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
