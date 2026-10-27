@@ -430,13 +430,19 @@ def collect_cpu_throttling() -> dict:
 
 
 def collect_failing_services() -> dict:
-    """Stopped-but-automatic services explain weird behavior."""
+    """Automatic services that tried to run and failed explain weird behavior.
+
+    Services that exited cleanly (exit code 0, e.g. Google/Dropbox updaters that
+    stop themselves) or that only start on a trigger are normal and not counted.
+    """
     if sys.platform != "win32":
         return {"available": False, "services": []}
 
-    script = """
+    script = r"""
     Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
-      Where-Object { $_.StartMode -eq 'Auto' -and $_.State -ne 'Running' -and -not $_.DelayedAutoStart } |
+      Where-Object { $_.StartMode -eq 'Auto' -and $_.State -ne 'Running' -and -not $_.DelayedAutoStart -and
+        $_.ExitCode -ne 0 -and
+        -not (Test-Path ("HKLM:\SYSTEM\CurrentControlSet\Services\" + $_.Name + "\TriggerInfo")) } |
       Select-Object Name, DisplayName, State, StartName, ExitCode |
       Sort-Object DisplayName |
       ConvertTo-Json -Compress

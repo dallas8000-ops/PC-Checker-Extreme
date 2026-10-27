@@ -239,8 +239,8 @@ def run_health_checks(hardware: dict, software: dict, cleanup: dict | None = Non
             {
                 "id": "failing_services",
                 "severity": "warning" if n < 5 else "critical",
-                "title": f"{n} automatic service(s) not running",
-                "message": "Some services set to start automatically are stopped. This can cause features to misbehave.",
+                "title": f"{n} automatic service(s) failed to run",
+                "message": "Some services set to start automatically stopped with an error. This can cause features to misbehave.",
             }
         )
 

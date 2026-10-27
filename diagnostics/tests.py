@@ -1,7 +1,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.test import Client, SimpleTestCase, TestCase
 
 from .services.health_checks import run_health_checks
 from .services.scan_insights import build_command_playbook
@@ -89,3 +89,67 @@ class RemediationUiTests(SimpleTestCase):
         self.assertTrue(result["ok"])
         self.assertTrue(run_powershell.called)
         self.assertIn("Verb RunAs", run_powershell.call_args.args[0])
+
+
+class DeviceToolsAnalysisTests(SimpleTestCase):
+    def test_usb_problem_and_failing_disk_are_flagged(self):
+        from .services.device_tools import analyze_status
+
+        raw = {
+            "usb": {
+                "problem_devices": {"name": "Unknown USB Device", "pnp_class": "USB",
+                                    "instance_id": "USB\\VID_0000&PID_0002\\1", "code": 43},
+                "controllers": [{"name": "Intel USB 3.20 xHCI", "status": "OK"}],
+                "selective_suspend_ac": 1,
+                "events": [],
+            },
+            "storage": {
+                "disks": [{"name": "Old HDD", "health": "Warning", "read_errors": 3}],
+                "volumes": [{"letter": "C", "drive_type": "Fixed", "health": "Healthy",
+                             "size_gb": 100, "free_gb": 5}],
+                "events": [{"provider": "disk", "id": 7, "message": "bad block"}],
+            },
+            "is_admin": False,
+        }
+        result = analyze_status(raw)
+
+        usb_titles = " ".join(f["title"] for f in result["usb"]["findings"])
+        self.assertIn("code 43", usb_titles)
+        self.assertIn("selective suspend", usb_titles)
+        disk = {f["severity"] for f in result["storage"]["findings"]}
+        self.assertIn("critical", disk)
+        titles = " ".join(f["title"] for f in result["storage"]["findings"])
+        self.assertIn("only 5 GB free", titles)
+        self.assertIn("disk error event", titles)
+
+    def test_healthy_system_reports_ok(self):
+        from .services.device_tools import analyze_status
+
+        raw = {
+            "usb": {"problem_devices": [], "controllers": [], "selective_suspend_ac": 0, "events": []},
+            "storage": {"disks": [{"name": "NVMe", "health": "Healthy", "temperature": 40, "wear": 2}],
+                        "volumes": [], "events": []},
+            "is_admin": True,
+        }
+        result = analyze_status(raw)
+        self.assertEqual(result["usb"]["findings"][0]["severity"], "ok")
+        self.assertEqual(result["storage"]["findings"][0]["severity"], "ok")
+
+    def test_unknown_tool_is_rejected(self):
+        from .services.device_tools import run_tool
+
+        self.assertFalse(run_tool("format_c")["ok"])
+
+
+class CsrfFailureTests(TestCase):
+    def test_missing_csrf_cookie_redirects_to_login_instead_of_403(self):
+        client = Client(enforce_csrf_checks=True)
+        response = client.post("/scan/start/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/accounts/login/", response["Location"])
+
+    def test_missing_csrf_cookie_on_api_returns_json(self):
+        client = Client(enforce_csrf_checks=True)
+        response = client.post("/api/tools/run/", data="{}", content_type="application/json")
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(response.json()["reload"])
