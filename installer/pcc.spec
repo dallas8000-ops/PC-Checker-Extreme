@@ -39,6 +39,11 @@ django.setup()
 hidden = (
     collect_submodules("diagnostics")
     + collect_submodules("pc_checker_extreme")
+    # billing is in INSTALLED_APPS but nothing imports it statically from
+    # run_app.py, so PyInstaller dropped it and the exe died on startup with
+    # "No module named 'billing'". Stripe lazy-loads its resource modules too.
+    + collect_submodules("billing")
+    + collect_submodules("stripe")
     # Explicit fallback: collect_submodules("diagnostics") skips diagnostics.services
     # at spec-parse time because AppRegistryNotReady fires before the registry is set up.
     + [
@@ -82,6 +87,8 @@ hidden = (
 datas = (
     collect_data_files("diagnostics")
     + collect_data_files("pc_checker_extreme")
+    + collect_data_files("billing")
+    + collect_data_files("stripe")
     + collect_data_files("sentry_sdk")
     + collect_data_files("reportlab")
     + collect_data_files("certifi")

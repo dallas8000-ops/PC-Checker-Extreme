@@ -1,0 +1,27 @@
+{
+  "productionUrl": "https://pc-checker-extreme-production.up.railway.app",
+  "environments": {
+    "test": {
+      "url": ""
+    },
+    "staging": {
+      "url": ""
+    },
+    "production": {
+      "url": ""
+    }
+  },
+  "platform": "railway",
+  "postgres": {
+    "provider": "railway",
+    "connectionEnvVar": "DATABASE_URL",
+    "autoProvision": true
+  },
+  "monitoring": {
+    "healthCheck": true
+  },
+  "backup": {
+    "enabled": true,
+    "retentionDays": 30
+  }
+}
