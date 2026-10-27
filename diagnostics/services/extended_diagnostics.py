@@ -1,5 +1,6 @@
 """SMART, temperatures, security, startup, benchmark, driver analysis."""
 import json
+import os
 import sys
 import time
 
@@ -122,21 +123,30 @@ def collect_benchmark() -> dict:
 
     disk_sec = None
     disk_note = ""
+    path = None
     try:
         import tempfile
 
-        path = tempfile.NamedTemporaryFile(delete=True)
+        # mkstemp + write through the returned handle: reopening a
+        # NamedTemporaryFile by name fails on Windows with "Permission denied".
+        fd, path = tempfile.mkstemp(prefix="pcc-bench-")
         t1 = time.perf_counter()
-        with open(path.name, "wb") as f:
+        with os.fdopen(fd, "wb") as f:
             f.write(b"0" * (4 * 1024 * 1024))
             f.flush()
+            os.fsync(f.fileno())
         disk_sec = round(time.perf_counter() - t1, 3)
-        path.close()
     except OSError as exc:
         disk_note = str(exc)
+    finally:
+        if path:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
     cpu_score = max(0, min(100, int(100 - (cpu_sec - 0.02) * 200)))
-    disk_score = max(0, min(100, int(100 - (disk_sec or 1) * 25))) if disk_sec else None
+    disk_score = max(0, min(100, int(100 - disk_sec * 25))) if disk_sec is not None else None
 
     return {
         "cpu_seconds": cpu_sec,
@@ -149,14 +159,20 @@ def collect_benchmark() -> dict:
 
 
 def analyze_duplicate_drivers(drivers: list[dict]) -> list[dict]:
-    """Flag duplicate or conflicting driver names."""
+    """Flag the same device instance listed more than once.
+
+    Compare on the hardware instance id (DeviceID). Names alone are not enough:
+    boards ship several genuinely different controllers whose names differ only
+    at the end (e.g. "Serial IO I2C Host Controller - 43E8" vs "- 43E9").
+    """
     seen = {}
     duplicates = []
     for drv in drivers:
-        name = (drv.get("DeviceName") or drv.get("name") or "").lower()
+        name = (drv.get("DeviceName") or drv.get("name") or "").strip()
+        device_id = (drv.get("DeviceID") or "").strip().upper()
         if not name:
             continue
-        key = name[:40]
+        key = device_id or name.lower()
         if key in seen:
             duplicates.append(
                 {

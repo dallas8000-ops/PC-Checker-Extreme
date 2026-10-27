@@ -241,3 +241,76 @@ class AiErrorMessageTests(SimpleTestCase):
         self.assertIn("rejected the API key", result["summary"])
         self.assertNotIn("Add OPENAI_API_KEY", result["summary"])
         self.assertNotIn("Add OPENAI_API_KEY", result["plain_english_summary"])
+
+
+class ScoreAccuracyTests(SimpleTestCase):
+    def test_official_score_is_measured_health_not_ai_estimate(self):
+        from .services import scanner
+        import inspect
+        src = inspect.getsource(scanner.run_full_scan)
+        self.assertIn('overall = health.get("health_score")', src)
+
+    def test_failed_disk_benchmark_is_not_a_bottleneck(self):
+        from .services.scan_insights import analyze_bottleneck
+
+        result = analyze_bottleneck({
+            "hardware": {"live_metrics": {"cpu_percent": 5, "memory": {"percent_used": 25}}},
+            "benchmark": {"cpu_score": 100, "disk_score": None},
+        })
+        self.assertNotIn("disk", result["scores"])
+        self.assertEqual(result["primary_bottleneck"], "none")
+        self.assertLessEqual(result["scores"]["cpu"], 100)
+
+    def test_slow_measured_disk_is_still_flagged(self):
+        from .services.scan_insights import analyze_bottleneck
+
+        result = analyze_bottleneck({
+            "hardware": {"live_metrics": {"cpu_percent": 5, "memory": {"percent_used": 25}}},
+            "benchmark": {"cpu_score": 100, "disk_score": 30},
+        })
+        self.assertEqual(result["primary_bottleneck"], "disk")
+
+    def test_disk_benchmark_measures_on_windows(self):
+        from .services.extended_diagnostics import collect_benchmark
+
+        result = collect_benchmark()
+        self.assertEqual(result["disk_note"], "")
+        self.assertIsNotNone(result["disk_score"])
+
+    def test_similar_named_controllers_are_not_duplicates(self):
+        from .services.extended_diagnostics import analyze_duplicate_drivers
+
+        drivers = [
+            {"DeviceName": "Intel(R) Serial IO I2C Host Controller - 43E8", "DeviceID": "PCI\\VEN_8086&DEV_43E8\\3&11583659&0&A8"},
+            {"DeviceName": "Intel(R) Serial IO I2C Host Controller - 43E9", "DeviceID": "PCI\\VEN_8086&DEV_43E9\\3&11583659&0&A9"},
+        ]
+        self.assertEqual(analyze_duplicate_drivers(drivers), [])
+        same = drivers[:1] * 2
+        self.assertEqual(len(analyze_duplicate_drivers(same)), 1)
+
+    def test_ai_score_does_not_override_measured_score(self):
+        from .services import ai_analyzer
+
+        fake = type("R", (), {})()
+        fake.choices = [type("C", (), {"message": type("M", (), {"content": '{"summary": "ok", "overall_score": 85, "health_grade": "B"}'})()})()]
+        with patch.object(ai_analyzer.settings, "OPENAI_API_KEY", "sk-test"), patch("openai.OpenAI") as client:
+            client.return_value.chat.completions.create.return_value = fake
+            result = ai_analyzer.analyze_system({"health": {"health_score": 100, "checks": []}})
+        self.assertEqual(result["overall_score"], 100)
+        self.assertEqual(result["health_grade"], "A")
+        self.assertEqual(result["ai_overall_score"], 85)
+
+
+class MemoryBottleneckTests(SimpleTestCase):
+    def _primary(self, mem_pct):
+        from .services.scan_insights import analyze_bottleneck
+        return analyze_bottleneck({
+            "hardware": {"live_metrics": {"cpu_percent": 5, "memory": {"percent_used": mem_pct}}},
+            "benchmark": {"cpu_score": 100, "disk_score": 99},
+        })["primary_bottleneck"]
+
+    def test_normal_ram_use_is_not_a_bottleneck(self):
+        self.assertEqual(self._primary(34), "none")
+
+    def test_high_ram_use_is_a_bottleneck(self):
+        self.assertEqual(self._primary(85), "memory")
