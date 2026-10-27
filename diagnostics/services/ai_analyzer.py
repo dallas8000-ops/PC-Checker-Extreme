@@ -210,4 +210,30 @@ System snapshot:
         fallback = _fallback_analysis(snapshot, health)
         fallback["ai_error"] = str(exc)
         fallback["ai_powered"] = False
+        # A key IS configured here, so "add OPENAI_API_KEY" would be wrong advice.
+        reason = _describe_ai_error(exc)
+        fallback["summary"] = f"Local scan complete. AI analysis was skipped: {reason}"
+        fallback["plain_english_summary"] = fallback["plain_english_summary"].replace(
+            "Add OPENAI_API_KEY for a richer AI-written summary.", f"AI summary unavailable: {reason}"
+        )
+        for section in fallback.get("interactive_sections", []):
+            section["details"] = f"AI review unavailable: {reason}"
         return fallback
+
+
+def _describe_ai_error(exc: Exception) -> str:
+    """Plain-English reason an OpenAI call failed, without echoing the key."""
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    if status == 401 or "invalid_api_key" in text or "incorrect api key" in text:
+        return (
+            "OpenAI rejected the API key (it is invalid, revoked or expired). "
+            "Put a current key in OPENAI_API_KEY in the app's .env and restart the app."
+        )
+    if status == 429 or "insufficient_quota" in text or "rate limit" in text:
+        return "the OpenAI account is out of credit or rate-limited. Check billing at platform.openai.com."
+    if status == 404 or ("model" in text and "not found" in text):
+        return "the configured OPENAI_MODEL is not available to this key."
+    if "connection" in text or "timed out" in text or "timeout" in text:
+        return "could not reach OpenAI (network problem). Try the scan again."
+    return "the OpenAI request failed. See server.log for details."

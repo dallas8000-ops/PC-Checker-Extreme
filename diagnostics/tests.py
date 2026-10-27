@@ -224,3 +224,20 @@ class AccuracyRegressionTests(SimpleTestCase):
         }
         findings = analyze_status(raw)["usb"]["findings"]
         self.assertTrue(any(f["severity"] == "warning" and f["title"].startswith("4 USB") for f in findings))
+
+
+class AiErrorMessageTests(SimpleTestCase):
+    def test_rejected_key_is_reported_instead_of_add_key(self):
+        from .services import ai_analyzer
+
+        class FakeAuthError(Exception):
+            status_code = 401
+
+        with patch.object(ai_analyzer.settings, "OPENAI_API_KEY", "sk-test"), \
+             patch("openai.OpenAI") as client:
+            client.return_value.chat.completions.create.side_effect = FakeAuthError("Incorrect API key provided")
+            result = ai_analyzer.analyze_system({"health": {"health_score": 90, "checks": []}})
+
+        self.assertIn("rejected the API key", result["summary"])
+        self.assertNotIn("Add OPENAI_API_KEY", result["summary"])
+        self.assertNotIn("Add OPENAI_API_KEY", result["plain_english_summary"])
