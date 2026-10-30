@@ -38,3 +38,6 @@ installer/PCCheckerExtreme-Installer-*/
 installer/*.zip
 installer/*.spec
 !installer/pcc.spec
+
+# local-only artifacts
+.claude/devtools-test-login.txt
