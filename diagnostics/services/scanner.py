@@ -161,7 +161,11 @@ def run_full_scan(
     progress(80, "AI analysis…" if include_ai else "Finalizing…")
     ai_analysis = analyze_system(snapshot) if include_ai else {}
 
-    overall = ai_analysis.get("overall_score") or health.get("health_score")
+    # The measured health-check score is the official score: it is repeatable and
+    # explained by the listed findings. The AI's own estimate varies run to run.
+    overall = health.get("health_score")
+    if overall is None:
+        overall = ai_analysis.get("overall_score")
     progress(100, "Complete")
 
     return {

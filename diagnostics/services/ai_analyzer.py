@@ -88,7 +88,7 @@ def _fallback_analysis(snapshot: dict, health: dict) -> dict:
     ]
 
     score = health.get("health_score", 75)
-    grade = "A" if score >= 90 else "B" if score >= 75 else "C" if score >= 60 else "D" if score >= 40 else "F"
+    grade = _grade(score)
 
     board = next(
         (c for c in components if c.get("category") == "Motherboard"),
@@ -182,7 +182,12 @@ def analyze_system(snapshot: dict) -> dict:
     prompt = f"""You are an expert PC technician. Analyze this system diagnostic snapshot.
 Identify each component by manufacturer where possible. Flag bottlenecks, security risks, and outdated software.
 Reference event_log_summary and reliability_failures when relevant. Suggest commands from command_playbook_titles when helpful.
-Be specific and practical. {ANALYSIS_SCHEMA_HINT}
+Be specific and practical.
+Only report problems that the snapshot actually shows. Do not recommend driver or
+GPU updates unless health_checks or driver_updates list one; do not claim a
+bottleneck when bottleneck.primary_bottleneck is "none"; do not call low free space
+a problem unless live_metrics shows a nearly full disk. If everything is healthy,
+say so and keep priority_actions short or empty. {ANALYSIS_SCHEMA_HINT}
 
 System snapshot:
 {json.dumps(compact, indent=2, default=str)}
@@ -204,10 +209,47 @@ System snapshot:
         content = response.choices[0].message.content or "{}"
         data = json.loads(content)
         data["ai_powered"] = True
+        # Keep the AI's estimate for reference, but report the measured score and
+        # grade so the summary never contradicts the findings list.
+        measured = health.get("health_score")
+        if measured is not None:
+            data["ai_overall_score"] = data.get("overall_score")
+            data["overall_score"] = measured
+            data["health_grade"] = _grade(measured)
         return data
     except Exception as exc:
         logger.exception("AI analysis failed: %s", exc)
         fallback = _fallback_analysis(snapshot, health)
         fallback["ai_error"] = str(exc)
         fallback["ai_powered"] = False
+        # A key IS configured here, so "add OPENAI_API_KEY" would be wrong advice.
+        reason = _describe_ai_error(exc)
+        fallback["summary"] = f"Local scan complete. AI analysis was skipped: {reason}"
+        fallback["plain_english_summary"] = fallback["plain_english_summary"].replace(
+            "Add OPENAI_API_KEY for a richer AI-written summary.", f"AI summary unavailable: {reason}"
+        )
+        for section in fallback.get("interactive_sections", []):
+            section["details"] = f"AI review unavailable: {reason}"
         return fallback
+
+
+def _grade(score: int) -> str:
+    return "A" if score >= 90 else "B" if score >= 75 else "C" if score >= 60 else "D" if score >= 40 else "F"
+
+
+def _describe_ai_error(exc: Exception) -> str:
+    """Plain-English reason an OpenAI call failed, without echoing the key."""
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    if status == 401 or "invalid_api_key" in text or "incorrect api key" in text:
+        return (
+            "OpenAI rejected the API key (it is invalid, revoked or expired). "
+            "Put a current key in OPENAI_API_KEY in the app's .env and restart the app."
+        )
+    if status == 429 or "insufficient_quota" in text or "rate limit" in text:
+        return "the OpenAI account is out of credit or rate-limited. Check billing at platform.openai.com."
+    if status == 404 or ("model" in text and "not found" in text):
+        return "the configured OPENAI_MODEL is not available to this key."
+    if "connection" in text or "timed out" in text or "timeout" in text:
+        return "could not reach OpenAI (network problem). Try the scan again."
+    return "the OpenAI request failed. See server.log for details."
