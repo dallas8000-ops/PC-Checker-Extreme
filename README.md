@@ -196,4 +196,4 @@ railway.toml                # Railway deploy config
 
 ## License
 
-MIT (add your own license if needed)
+Proprietary. All rights reserved. This source code is published for viewing and evaluation only. No permission is granted to copy, use, modify, or distribute it. See [LICENSE](LICENSE) for the full terms. For licensing inquiries, visit https://gilliomfrontlinedigital.com.
