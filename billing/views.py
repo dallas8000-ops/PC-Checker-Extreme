@@ -42,7 +42,8 @@ def webhook(request):
         return HttpResponse("Invalid signature", status=400)
 
     try:
-        dispatch_stripe_event(event)
+        # Newer stripe-python Event objects are not dicts; handlers use .get().
+        dispatch_stripe_event(json.loads(payload))
     except Exception as exc:
         print(f"[stripe] Webhook handler error: {exc}")
         return JsonResponse({"error": "handler failed"}, status=500)
