@@ -1,26 +1,49 @@
 {
   "createdAt": "2026-06-12T06:22:55.992941+00:00",
-  "updatedAt": "2026-06-12T06:24:14.577337+00:00",
+  "updatedAt": "2026-10-02T15:24:46.917226+00:00",
   "accountId": "acct_1TVQpaRxznXvj6jh",
   "products": [
     {
-      "id": "prod_Ugm2BkF503rTbB",
-      "name": "`OPENAI_MODEL`"
+      "id": "prod_VMmERYsbhKLdtm",
+      "name": "PC Checker Extreme Pro"
+    },
+    {
+      "id": "prod_VMmERYsbhKLdtm",
+      "name": "PC Checker Extreme Pro"
     }
   ],
   "prices": [
     {
-      "id": "price_1ThOUURxznXvj6jhTC3mbWmk",
-      "tier": "`OPENAI_MODEL`",
-      "amount": 400,
+      "id": "price_1UM2gNRxznXvj6jhlmwYU5cJ",
+      "tier": "PC Checker Extreme Pro",
+      "amount": 799,
       "currency": "usd",
       "interval": "month",
       "trialDays": 0,
-      "features": null
+      "features": [
+        "Live hardware, SMART, thermal, and reliability diagnostics",
+        "AI-explained findings with prioritized fix steps",
+        "Scan history, compare, and scan chat",
+        "OEM-first driver and support guidance"
+      ]
+    },
+    {
+      "id": "price_1UM2gPRxznXvj6jhtsDWfyK3",
+      "tier": "PC Checker Extreme Pro",
+      "amount": 6900,
+      "currency": "usd",
+      "interval": "year",
+      "trialDays": 0,
+      "features": [
+        "Live hardware, SMART, thermal, and reliability diagnostics",
+        "AI-explained findings with prioritized fix steps",
+        "Scan history, compare, and scan chat",
+        "OEM-first driver and support guidance"
+      ]
     }
   ],
   "webhookEndpoint": {
-    "id": "we_1ThOVmRxznXvj6jhOtvVf6KR",
+    "id": "we_1UM8KIRxznXvj6jhhSDLHaY7",
     "url": "https://pc-checker-extreme-production.up.railway.app/stripe/webhook",
     "reused": false
   },

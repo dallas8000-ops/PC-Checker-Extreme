@@ -282,26 +282,32 @@ def analyze_bottleneck(snapshot: dict) -> dict:
     mem = metrics.get("memory", {})
     cpu_pct = metrics.get("cpu_percent") or 0
     mem_pct = mem.get("percent_used") or 0
-    cpu_score = bench.get("cpu_score") or 50
-    disk_score = bench.get("disk_score") or 50
+    cpu_score = bench.get("cpu_score")
+    disk_score = bench.get("disk_score")
 
-    scores = {
-        "cpu": 100 - min(100, cpu_pct) * 0.5 + cpu_score * 0.5,
-        "memory": 100 - mem_pct,
-        "disk": disk_score or 50,
-    }
+    # Only score what was actually measured; a failed benchmark must not
+    # become a made-up "50" that then wins as the bottleneck.
+    # RAM use under ~60% is normal headroom, not a limit; pressure starts above that.
+    scores = {"memory": max(0.0, min(100.0, (100 - mem_pct) * 2.5))}
+    if cpu_score is not None:
+        scores["cpu"] = min(100, (100 - min(100, cpu_pct)) * 0.5 + cpu_score * 0.5)
+    if disk_score is not None:
+        scores["disk"] = disk_score
     weakest = min(scores, key=scores.get)
+    if scores[weakest] >= 70:
+        weakest = "none"
     labels = {
         "cpu": "CPU-bound — processor or background load is the main limit.",
         "memory": "RAM-bound — add memory or reduce running apps.",
         "disk": "Disk-bound — storage speed or free space is the main limit.",
+        "none": "No bottleneck detected — CPU, memory and disk all measured healthy.",
     }
     use_case = []
-    if scores["disk"] < 60:
+    if scores.get("disk", 100) < 60:
         use_case.append("Everyday tasks and boot may feel slow until disk is upgraded or freed.")
     if scores["memory"] < 60:
         use_case.append("Multitasking and browser tabs will struggle.")
-    if scores["cpu"] < 60:
+    if scores.get("cpu", 100) < 60:
         use_case.append("Gaming, video, and compile workloads may be CPU-limited.")
 
     return {

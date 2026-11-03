@@ -248,6 +248,10 @@ LOGIN_URL = "/accounts/login/"
 LOGIN_REDIRECT_URL = "/app/"
 LOGOUT_REDIRECT_URL = "/"
 
+# Expired/cleared cookies (e.g. after a browser reset) send users back to a fresh
+# page with a message instead of Django's raw 403 page.
+CSRF_FAILURE_VIEW = "diagnostics.views.csrf_failure"
+
 # AI diagnostics
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")

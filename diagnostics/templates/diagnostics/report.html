@@ -18,7 +18,7 @@
     <a href="{% url 'diagnostics:home' %}" class="back-link">← RETURN TO DASHBOARD</a>
     <h1>{{ report.hostname|default:"SYSTEM REPORT" }}</h1>
     <p class="muted">SCAN TIMESTAMP {{ report.created_at|date:"Y-m-d · H:i:s" }}
-      {% if ai.ai_powered %} · <span class="ai-badge">NEURAL ENHANCED</span>{% endif %}
+      {% if ai.ai_powered %} · <span class="ai-badge">NEURAL ENHANCED</span>{% elif ai %} · <span class="ai-badge ai-badge-off" title="{{ ai.summary }}">AI NOT USED</span>{% endif %}
     </p>
   </div>
   {% if report.overall_score is not None %}

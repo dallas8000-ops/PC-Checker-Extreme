@@ -1,0 +1,174 @@
+{% extends "diagnostics/base.html" %}
+{% load static %}
+
+{% block title %}USB &amp; Disk Tools — PC Checker Extreme{% endblock %}
+{% block body_class %}page-report page-tools{% endblock %}
+
+{% block hud_actions %}
+<a href="{% url 'diagnostics:device_tools' %}" class="hud-link">REFRESH</a>
+<a href="{% url 'diagnostics:home' %}" class="hud-link">DASHBOARD</a>
+{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+{% if not status.supported or status.error %}
+<section class="card">
+  <h2>Device tools unavailable</h2>
+  <p class="muted">{{ status.error }}</p>
+</section>
+{% else %}
+
+<p class="muted tools-intro">
+  Live status of this PC's USB devices and drives. Buttons marked <strong>ADMIN</strong> show a Windows
+  administrator prompt you must approve. Nothing runs until you click it.
+</p>
+
+<section class="card">
+  <h2>USB devices &amp; ports</h2>
+  <ul class="check-list">
+    {% for f in status.usb.findings %}
+    <li class="check-item severity-{{ f.severity }}">
+      <span class="check-icon"></span>
+      <div><strong>{{ f.title }}</strong><p>{{ f.message }}</p></div>
+    </li>
+    {% endfor %}
+  </ul>
+
+  <div class="tool-grid">
+    {% for tool in usb_tools %}
+    <div class="tool-item">
+      <button type="button" class="btn-hud btn-hud-magenta btn-tool" data-tool-id="{{ tool.id }}"
+        {% if tool.confirm %}data-confirm="{{ tool.description }}"{% endif %}>
+        {{ tool.title }}{% if tool.admin %} <span class="tool-admin">ADMIN</span>{% endif %}
+      </button>
+      <p class="panel-hint">{{ tool.description }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <p class="panel-hint">
+    {{ status.usb.usb_device_count }} USB device entries connected (including hubs and multi-function parts) ·
+    {{ status.usb.controllers|length }} USB controller(s) ·
+    selective suspend {% if status.usb.selective_suspend_ac == 1 %}ON{% elif status.usb.selective_suspend_ac == 0 %}OFF{% else %}unknown{% endif %}
+  </p>
+
+  {% if status.usb.problem_devices %}
+  <h3>USB devices with problems</h3>
+  <table class="component-table">
+    <thead><tr><th>Device</th><th>Code</th><th>What it means</th></tr></thead>
+    <tbody>
+      {% for d in status.usb.problem_devices %}
+      <tr><td>{{ d.name|default:"Unknown device" }}<br><small class="muted">{{ d.instance_id }}</small></td><td>{{ d.code }}</td><td>{{ d.explanation }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if status.usb.events %}
+  <h3>USB / Plug-and-Play warnings, last 14 days ({{ status.usb.event_total }} total)</h3>
+  <table class="component-table event-log-table">
+    <thead><tr><th>Last seen</th><th>Times</th><th>Device</th><th>Message</th><th>Verdict</th></tr></thead>
+    <tbody>
+      {% for e in status.usb.events %}
+      <tr>
+        <td>{{ e.time }}</td>
+        <td>{{ e.count }}{% if e.startup_count %}<br><small class="muted">{{ e.startup_count }} at startup</small>{% endif %}</td>
+        <td>{{ e.device_name|default:"—" }}{% if e.device_status %}<br><small class="muted">status {{ e.device_status }}{% if e.device_present is False %}, not connected{% endif %}</small>{% endif %}</td>
+        <td>{{ e.message }}<br><small class="muted">{{ e.provider }} · event {{ e.id }}</small></td>
+        <td>{% if e.verdict == "problem" %}<strong>Needs attention</strong>{% else %}OK{% endif %}{% if e.note %}<br><small class="muted">{{ e.note }}</small>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Hard drives &amp; SSDs</h2>
+  <ul class="check-list">
+    {% for f in status.storage.findings %}
+    <li class="check-item severity-{{ f.severity }}">
+      <span class="check-icon"></span>
+      <div><strong>{{ f.title }}</strong><p>{{ f.message }}</p></div>
+    </li>
+    {% endfor %}
+  </ul>
+
+  <div class="tool-grid">
+    {% for tool in storage_tools %}
+    <div class="tool-item">
+      <button type="button" class="btn-hud btn-hud-magenta btn-tool" data-tool-id="{{ tool.id }}"
+        {% if tool.confirm %}data-confirm="{{ tool.description }}"{% endif %}>
+        {{ tool.title }}{% if tool.admin %} <span class="tool-admin">ADMIN</span>{% endif %}
+      </button>
+      <p class="panel-hint">{{ tool.description }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <h3>Physical drives</h3>
+  <table class="component-table">
+    <thead><tr><th>Drive</th><th>Type</th><th>Size</th><th>Health</th><th>Temp</th><th>Wear</th><th>Power-on hrs</th></tr></thead>
+    <tbody>
+      {% for d in status.storage.disks %}
+      <tr>
+        <td>{{ d.name }}</td>
+        <td>{{ d.media }} / {{ d.bus }}</td>
+        <td>{{ d.size_gb }} GB</td>
+        <td>{{ d.health }}{% if d.operational and d.operational != "OK" %} ({{ d.operational }}){% endif %}</td>
+        <td>{% if d.temperature is not None %}{{ d.temperature }}°C{% else %}—{% endif %}</td>
+        <td>{% if d.wear is not None %}{{ d.wear }}%{% else %}—{% endif %}</td>
+        <td>{{ d.power_on_hours|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Volumes</h3>
+  <table class="component-table">
+    <thead><tr><th>Drive</th><th>Label</th><th>File system</th><th>Health</th><th>Free</th></tr></thead>
+    <tbody>
+      {% for v in status.storage.volumes %}
+      <tr><td>{{ v.letter }}:</td><td>{{ v.label }}</td><td>{{ v.fs }}</td><td>{{ v.health }}</td><td>{{ v.free_gb }} / {{ v.size_gb }} GB</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if status.storage.events %}
+  <h3>Disk / file-system warnings, last 14 days ({{ status.storage.event_total }} total)</h3>
+  <table class="component-table event-log-table">
+    <thead><tr><th>Last seen</th><th>Times</th><th>Source</th><th>Message</th></tr></thead>
+    <tbody>
+      {% for e in status.storage.events %}
+      <tr><td>{{ e.time }}</td><td>{{ e.count }}</td><td>{{ e.provider }} · event {{ e.id }}</td><td>{% if e.hint %}<strong>{{ e.hint }}</strong><br>{% endif %}{{ e.message }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+{% if status.other_problem_devices %}
+<section class="card">
+  <h2>Other devices with problems</h2>
+  <table class="component-table">
+    <thead><tr><th>Device</th><th>Class</th><th>Code</th><th>What it means</th></tr></thead>
+    <tbody>
+      {% for d in status.other_problem_devices %}
+      <tr><td>{{ d.name|default:"Unknown device" }}</td><td>{{ d.pnp_class }}</td><td>{{ d.code }}</td><td>{{ d.explanation }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<div class="tool-output hidden" id="tool-output" role="status">
+  <div class="tool-output-head"><strong id="tool-output-title"></strong><button type="button" class="hud-link" id="tool-output-close">CLOSE</button></div>
+  <p id="tool-output-message"></p>
+  <pre id="tool-output-text"></pre>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'diagnostics/js/device-tools.js' %}"></script>
+{% endblock %}

@@ -4,6 +4,7 @@ import socket
 import sys
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
@@ -14,6 +15,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 
 from .models import ScanReport
 from .report_context import build_report_context
+from .services import device_tools
 from .services.driver_lookup import resolve_driver_sources
 from .services.hardware_collector import probe_motherboard_live
 from .services.remediation import apply_fix as run_fix
@@ -83,6 +85,42 @@ def _live_telemetry():
 
 def landing(request):
     return render(request, "diagnostics/landing.html")
+
+
+def csrf_failure(request, reason=""):
+    """Recover from a missing/stale CSRF cookie instead of showing Django's 403 page.
+
+    This happens when cookies are cleared (browser reset, private window) while a
+    page with a form is still open. The fix is always the same: reload the page so
+    a fresh token is issued, logging in again if the session went with it.
+    """
+    wants_json = (
+        "application/json" in (request.headers.get("Content-Type") or "")
+        or "application/json" in (request.headers.get("Accept") or "")
+    )
+    if wants_json:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "Your session expired or cookies were cleared. Reload the page and try again.",
+                "reload": True,
+            },
+            status=403,
+        )
+
+    if request.user.is_authenticated:
+        messages.warning(
+            request,
+            "Your browser's security cookie was missing or expired, so that action was not run. "
+            "The page has been refreshed — please try again.",
+        )
+        return redirect("diagnostics:home")
+
+    messages.warning(
+        request,
+        "Your session expired or your browser cookies were cleared. Log in again to continue.",
+    )
+    return redirect(f"{settings.LOGIN_URL}?next=/app/")
 
 
 def _motherboard_for_dashboard(last_complete_scan):
@@ -401,6 +439,36 @@ def report_json(request, report_id):
             "created_at": report.created_at.isoformat(),
         }
     )
+
+
+@login_required
+@require_GET
+def device_tools_page(request):
+    status = device_tools.collect_status()
+    return render(
+        request,
+        "diagnostics/device_tools.html",
+        {
+            "status": status,
+            "usb_tools": device_tools.tools_for("usb"),
+            "storage_tools": device_tools.tools_for("storage"),
+        },
+    )
+
+
+@login_required
+@require_http_methods(["POST"])
+def run_device_tool(request):
+    """Run a user-confirmed USB/storage tool from the device tools page."""
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        body = {}
+    tool_id = (body.get("tool_id") or request.POST.get("tool_id") or "").strip()
+    if not tool_id:
+        return JsonResponse({"error": "tool_id required"}, status=400)
+    result = device_tools.run_tool(tool_id)
+    return JsonResponse(result, status=200 if result.get("ok") else 400)
 
 
 @require_GET

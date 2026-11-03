@@ -1,0 +1,7 @@
+{
+  "deployedAt": "2026-10-02T15:26:43.568742+00:00",
+  "platform": "railway",
+  "productionUrl": "https://pc-checker-extreme-production.up.railway.app",
+  "postgresProvider": null,
+  "readinessScore": 100
+}

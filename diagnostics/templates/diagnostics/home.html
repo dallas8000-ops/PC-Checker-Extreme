@@ -189,16 +189,19 @@
         <label class="toggle-ai">
           <input type="checkbox" name="include_ai" checked>
           <span class="toggle-track"></span>
-          <span>Neural analysis (OpenAI){% if not has_openai %} — add <code>OPENAI_API_KEY</code>{% endif %}</span>
+          <span class="toggle-state" aria-hidden="true"></span>
+          <span>Neural analysis (OpenAI){% if has_openai %} — API key set{% else %} — add <code>OPENAI_API_KEY</code>{% endif %}</span>
         </label>
         <label class="toggle-ai">
           <input type="checkbox" name="include_software_inventory">
           <span class="toggle-track"></span>
+          <span class="toggle-state" aria-hidden="true"></span>
           <span>Include installed programs list (registry / Add or Remove Programs — optional)</span>
         </label>
         <label class="toggle-ai">
           <input type="checkbox" name="include_slow_checks">
           <span class="toggle-track"></span>
+          <span class="toggle-state" aria-hidden="true"></span>
           <span>Check app &amp; Windows updates (winget — adds 1–2 min, can hang on slow networks)</span>
         </label>
         <button type="submit" class="btn-hud btn-hud-magenta btn-hud-lg" id="scan-btn">

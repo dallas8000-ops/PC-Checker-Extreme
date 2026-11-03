@@ -1,5 +1,6 @@
 """SMART, temperatures, security, startup, benchmark, driver analysis."""
 import json
+import os
 import sys
 import time
 
@@ -122,21 +123,30 @@ def collect_benchmark() -> dict:
 
     disk_sec = None
     disk_note = ""
+    path = None
     try:
         import tempfile
 
-        path = tempfile.NamedTemporaryFile(delete=True)
+        # mkstemp + write through the returned handle: reopening a
+        # NamedTemporaryFile by name fails on Windows with "Permission denied".
+        fd, path = tempfile.mkstemp(prefix="pcc-bench-")
         t1 = time.perf_counter()
-        with open(path.name, "wb") as f:
+        with os.fdopen(fd, "wb") as f:
             f.write(b"0" * (4 * 1024 * 1024))
             f.flush()
+            os.fsync(f.fileno())
         disk_sec = round(time.perf_counter() - t1, 3)
-        path.close()
     except OSError as exc:
         disk_note = str(exc)
+    finally:
+        if path:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
     cpu_score = max(0, min(100, int(100 - (cpu_sec - 0.02) * 200)))
-    disk_score = max(0, min(100, int(100 - (disk_sec or 1) * 25))) if disk_sec else None
+    disk_score = max(0, min(100, int(100 - disk_sec * 25))) if disk_sec is not None else None
 
     return {
         "cpu_seconds": cpu_sec,
@@ -149,14 +159,20 @@ def collect_benchmark() -> dict:
 
 
 def analyze_duplicate_drivers(drivers: list[dict]) -> list[dict]:
-    """Flag duplicate or conflicting driver names."""
+    """Flag the same device instance listed more than once.
+
+    Compare on the hardware instance id (DeviceID). Names alone are not enough:
+    boards ship several genuinely different controllers whose names differ only
+    at the end (e.g. "Serial IO I2C Host Controller - 43E8" vs "- 43E9").
+    """
     seen = {}
     duplicates = []
     for drv in drivers:
-        name = (drv.get("DeviceName") or drv.get("name") or "").lower()
+        name = (drv.get("DeviceName") or drv.get("name") or "").strip()
+        device_id = (drv.get("DeviceID") or "").strip().upper()
         if not name:
             continue
-        key = name[:40]
+        key = device_id or name.lower()
         if key in seen:
             duplicates.append(
                 {
@@ -305,6 +321,9 @@ def collect_virtualization_security() -> dict:
       @{
         available = $true
         memory_integrity = ($dg.SecurityServicesRunning -contains 2)
+        memory_integrity_configured = ($dg.SecurityServicesConfigured -contains 2)
+        virtualization_firmware = [bool]((Get-CimInstance Win32_Processor | Select-Object -First 1).VirtualizationFirmwareEnabled)
+        hypervisor_present = [bool](Get-CimInstance Win32_ComputerSystem).HypervisorPresent
         vbs_running = ($dg.VirtualizationBasedSecurityStatus -eq 2)
         secure_boot_on = $false
       } | ConvertTo-Json -Compress
@@ -330,18 +349,23 @@ def collect_secure_boot_tpm() -> dict:
     $sb = $null
     try { $sb = Confirm-SecureBootUEFI } catch {}
     $tpm = $null
+    # Get-Tpm needs admin; without it the fields come back empty (not $false),
+    # so report them as unknown and fall back to the TPM device's PnP status.
+    $pnp = Get-PnpDevice -Class SecurityDevices -PresentOnly -ErrorAction SilentlyContinue |
+      Where-Object { $_.FriendlyName -match 'Trusted Platform Module' } | Select-Object -First 1
     try {
       $t = Get-Tpm -ErrorAction Stop
       $tpm = @{
-        present = $true
+        present = [bool]($t.TpmPresent -or $pnp)
         ready = $t.TpmReady
         enabled = $t.TpmEnabled
         activated = $t.TpmActivated
         owned = $t.TpmOwned
       }
     } catch {
-      $tpm = @{ present = $false }
+      $tpm = @{ present = [bool]$pnp; ready = $null }
     }
+    $tpm.device_status = if ($pnp) { [string]$pnp.Status } else { $null }
     $spec = $null
     try {
       $spec = (Get-CimInstance -Namespace root\\cimv2\\security\\microsofttpm -ClassName Win32_Tpm -ErrorAction Stop).SpecVersion
@@ -430,13 +454,19 @@ def collect_cpu_throttling() -> dict:
 
 
 def collect_failing_services() -> dict:
-    """Stopped-but-automatic services explain weird behavior."""
+    """Automatic services that tried to run and failed explain weird behavior.
+
+    Services that exited cleanly (exit code 0, e.g. Google/Dropbox updaters that
+    stop themselves) or that only start on a trigger are normal and not counted.
+    """
     if sys.platform != "win32":
         return {"available": False, "services": []}
 
-    script = """
+    script = r"""
     Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
-      Where-Object { $_.StartMode -eq 'Auto' -and $_.State -ne 'Running' -and -not $_.DelayedAutoStart } |
+      Where-Object { $_.StartMode -eq 'Auto' -and $_.State -ne 'Running' -and -not $_.DelayedAutoStart -and
+        $_.ExitCode -ne 0 -and
+        -not (Test-Path ("HKLM:\SYSTEM\CurrentControlSet\Services\" + $_.Name + "\TriggerInfo")) } |
       Select-Object Name, DisplayName, State, StartName, ExitCode |
       Sort-Object DisplayName |
       ConvertTo-Json -Compress
